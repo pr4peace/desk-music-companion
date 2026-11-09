@@ -1,0 +1,1432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Desk Music Companion</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Desk Music">
+<meta name="theme-color" content="#0b0b0d">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+  :root {
+    --bg: #0b0b0d;
+    --text: #f6f4ef;
+    --muted: rgba(246, 244, 239, .62);
+    --accent: #f6c56f;
+    --line-idle: rgba(246, 244, 239, .26);
+    --line-past: rgba(246, 244, 239, .14);
+    --hair: rgba(246, 244, 239, .16);
+    --pad-x: max(24px, env(safe-area-inset-left), env(safe-area-inset-right));
+    --pad-top: max(22px, env(safe-area-inset-top));
+    --pad-bottom: max(18px, env(safe-area-inset-bottom));
+    --lyric-size: clamp(30px, 8.8vw, 68px);
+    --ease: cubic-bezier(.22, 1, .36, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, Roboto, "Noto Sans", "Noto Sans Devanagari", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none; -webkit-user-select: none;
+  }
+  [hidden] { display: none !important; }
+
+  #backdrop {
+    position: fixed; inset: -30%;
+    background-size: cover; background-position: center;
+    filter: blur(70px) saturate(1.5) brightness(.42);
+    opacity: 0; transition: opacity 1.4s ease;
+  }
+  #backdrop.on { opacity: 1; }
+
+  #now {
+    position: fixed; inset: 0;
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    gap: 14px; touch-action: manipulation;
+  }
+  #now.split { grid-template-rows: auto minmax(0, 1fr) clamp(138px, 26vh, 220px) auto; }
+  .vis-on #now { touch-action: none; }
+  #meta { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  #art {
+    width: 56px; height: 56px; flex: none; border-radius: 8px;
+    background: rgba(255, 255, 255, .08) center / cover no-repeat;
+  }
+  #song { min-width: 0; }
+  #title, #artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #title { font-size: 18px; font-weight: 650; line-height: 1.25; }
+  #artist { font-size: 15px; line-height: 1.3; color: var(--muted); }
+
+  #stage {
+    position: relative; overflow: hidden; min-height: 0;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 80%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 80%, transparent 100%);
+  }
+  #lines {
+    list-style: none; position: absolute; left: 0; right: 0; top: 0;
+    transition: transform .65s var(--ease);
+    will-change: transform;
+  }
+  #lines li {
+    font-size: var(--lyric-size); font-weight: 760; line-height: 1.16;
+    letter-spacing: -.012em; padding-bottom: .62em;
+    color: var(--line-idle); transition: color .4s ease;
+    overflow-wrap: anywhere;
+  }
+  #lines li.past { color: var(--line-past); }
+  #lines li.current { color: var(--text); }
+  #lines li.gap { letter-spacing: .3em; }
+  #lines li.gap.current { animation: breathe 2.2s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: .35; } }
+
+  #lines .original, #lines .roman, #lines .english { display: block; }
+  #lines .roman, #lines .english { font-size: .56em; line-height: 1.24; letter-spacing: 0; margin-top: .34em; }
+  #lines .roman { font-weight: 600; }
+  #lines .english { font-weight: 480; opacity: .8; }
+  #lines .roman:empty, #lines .english:empty, .no-roman #lines .roman, .no-english #lines .english,
+  #stage:not(.plain) #lines .roman, #stage:not(.plain) #lines .english { display: none; }
+
+  /* Words fill in as they are sung. The padding keeps tall script marks inside the fill. */
+  .word {
+    display: inline-block; padding: .24em .05em; margin: -.24em -.05em;
+    transform-origin: 50% 100%; transition: color .12s linear;
+  }
+  #lines, #gloss-roman { --unsung: rgba(246, 244, 239, .42); }
+  #vis-line { --unsung: rgba(246, 244, 239, .6); }
+  #lines li.current .original .word, #gloss-roman .word, #vis-line .word { color: var(--unsung); }
+  #lines li.current .word.sung, #gloss-roman .word.sung, #vis-line .word.sung { color: var(--text); }
+  #lines li.current .word.active, #gloss-roman .word.active, #vis-line .word.active {
+    color: transparent; transition: none;
+    background-image: linear-gradient(90deg, var(--text) calc(var(--p, 0) * 1%), var(--unsung) 0);
+    -webkit-background-clip: text; background-clip: text;
+    transform: translateY(calc(var(--v, 0) * -.07em)) scale(calc(1 + var(--v, 0) * .06));
+  }
+  #lines li.current .word.active:dir(rtl), #gloss-roman .word.active:dir(rtl), #vis-line .word.active:dir(rtl) {
+    background-image: linear-gradient(270deg, var(--text) calc(var(--p, 0) * 1%), var(--unsung) 0);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #lines li.current .word.active, #gloss-roman .word.active, #vis-line .word.active { transform: none; }
+  }
+
+  #stage.plain { -webkit-mask-image: none; mask-image: none; }
+  #stage.plain #lines { transition: transform 1.2s linear; }
+  #stage.plain #lines li {
+    font-size: clamp(22px, 6vw, 40px); font-weight: 620; line-height: 1.3;
+    padding-bottom: .35em; color: rgba(246, 244, 239, .82);
+  }
+
+  #note {
+    position: absolute; left: 0; right: 0; top: 40%; transform: translateY(-50%);
+    font-size: clamp(22px, 6vw, 36px); font-weight: 620; line-height: 1.25; color: var(--muted);
+  }
+
+  #stage.vis, #stage.tidbits { -webkit-mask-image: none; mask-image: none; }
+  #stage.vis #lines, #stage.vis #note, #stage.tidbits #lines, #stage.tidbits #note,
+  #stage:not(.vis) #vis-note, #stage:not(.vis) #vis-lyric, #stage:not(.tidbits) #tidbits { display: none; }
+
+  /* The picture fills the whole screen; everything else sits on top of it. */
+  #vis { position: fixed; inset: 0; width: 100%; height: 100%; display: none; }
+  .vis-on.vis-gl #vis { display: block; }
+  .vis-on.vis-gl #backdrop { visibility: hidden; }
+  #vis-lyric { position: absolute; inset: 0; display: grid; place-items: center; }
+  #vis-line, .vis-gone {
+    grid-area: 1 / 1; width: 100%; text-align: center; font-weight: 760;
+    line-height: 1.14; letter-spacing: -.015em; text-wrap: balance;
+  }
+  .vis-gone { pointer-events: none; }
+  .vis-gone .word { color: var(--text); }
+  #vis-note {
+    position: absolute; left: 0; right: 0; bottom: 8px; text-align: center;
+    font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--muted);
+  }
+
+  /* The sung words scroll above; what they mean stays in one place below. */
+  #gloss { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: .5em; padding-top: 14px; border-top: 1px solid var(--hair); }
+  #gloss-roman { font-size: calc(var(--gs, 1) * clamp(23px, 6.4vw, 34px)); font-weight: 700; line-height: 1.18; letter-spacing: -.01em; }
+  #gloss-english { font-size: calc(var(--gs, 1) * clamp(18px, 5vw, 26px)); font-weight: 460; line-height: 1.26; color: rgba(246, 244, 239, .82); }
+  #gloss-roman:empty, #gloss-english:empty { display: none; }
+  #gloss-wait { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--muted); }
+  .spin { width: 16px; height: 16px; flex: none; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #tidbits { position: absolute; inset: 0; display: grid; align-content: center; gap: 18px; }
+  #tb-label { font-size: clamp(19px, 5.2vw, 26px); font-weight: 620; line-height: 1.25; color: var(--muted); margin-bottom: 12px; }
+  #tb-track { display: block; height: 4px; border-radius: 4px; background: var(--hair); overflow: hidden; }
+  #tb-fill { display: block; height: 100%; background: var(--text); transform-origin: left; transform: scaleX(0); transition: transform .2s linear; }
+  #tb-text { font-size: clamp(27px, 7.6vw, 46px); font-weight: 720; line-height: 1.18; letter-spacing: -.012em; text-wrap: pretty; }
+  #tb-text.funny { color: var(--accent); font-weight: 640; }
+  #tb-source { font-size: 14px; font-weight: 550; color: var(--muted); }
+  #tb-dots { display: flex; gap: 6px; margin-top: 4px; }
+  #tb-dots i { flex: 1; height: 3px; border-radius: 3px; background: var(--hair); overflow: hidden; }
+  #tb-dots b { display: block; height: 100%; background: var(--text); transform-origin: left; transform: scaleX(0); }
+  #tb-note { font-size: clamp(20px, 5.6vw, 28px); font-weight: 620; line-height: 1.28; color: var(--muted); }
+
+  #tabs { display: flex; flex: none; gap: 2px; padding: 2px; border-radius: 99px; background: rgba(255, 255, 255, .08); }
+  #tabs button {
+    height: 40px; padding: 0 12px; border: 0; border-radius: 99px; background: transparent;
+    color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  #tabs button[aria-selected="true"] { background: rgba(255, 255, 255, .16); color: var(--text); }
+
+  #foot { display: flex; align-items: center; gap: 12px; min-height: 16px; }
+  #bar { flex: 1; height: 3px; border-radius: 3px; background: var(--hair); overflow: hidden; }
+  #fill { display: block; height: 100%; width: 100%; background: var(--text); transform-origin: left; transform: scaleX(0); }
+  #tag { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+
+  #idle {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    transition: transform 20s linear;
+  }
+  #clock {
+    font-size: clamp(84px, 27vmin, 190px); font-weight: 230; line-height: 1;
+    letter-spacing: -.035em; font-variant-numeric: tabular-nums;
+  }
+  #date { margin-top: 10px; font-size: clamp(19px, 5vmin, 30px); font-weight: 500; color: var(--muted); }
+  #idle-note { margin-top: 26px; max-width: 26em; font-size: 16px; line-height: 1.4; color: var(--muted); }
+
+  #offline {
+    position: fixed; left: 50%; top: var(--pad-top); transform: translateX(-50%);
+    padding: 8px 14px; border-radius: 99px; white-space: nowrap;
+    background: rgba(30, 30, 34, .94); color: var(--text); font-size: 14px; font-weight: 600;
+  }
+
+  #timing {
+    position: fixed; left: 50%; bottom: calc(var(--pad-bottom) + 56px); transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; border-radius: 30px;
+    background: rgba(30, 30, 34, .94);
+    transition: opacity .25s ease;
+  }
+  #timing.off { opacity: 0; pointer-events: none; }
+  #timing button {
+    width: 48px; height: 44px; border: 0; border-radius: 99px; background: transparent;
+    color: var(--text); font: inherit; font-size: 24px; font-weight: 500; cursor: pointer;
+  }
+  #timing button:active { background: rgba(255, 255, 255, .14); }
+  #timing .row { display: flex; align-items: center; gap: 2px; }
+  #timing .transport button { width: 76px; height: 54px; display: grid; place-items: center; }
+  #timing .transport svg { width: 28px; height: 28px; fill: currentColor; }
+  #play .pause-icon, #play.is-playing .play-icon { display: none; }
+  #play.is-playing .pause-icon { display: block; }
+  #timing button.mode { font-size: 14px; font-weight: 650; }
+  #timing button.mode[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+  #timing output { min-width: 112px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* A phone lying sideways on the desk. */
+  @media (orientation: landscape) and (max-height: 540px) {
+    :root { --lyric-size: clamp(26px, 5.2vw, 46px); }
+    #now { grid-template-columns: minmax(150px, 27%) 1fr; grid-template-rows: 1fr auto; column-gap: 32px; row-gap: 10px; }
+    #meta { flex-direction: column; align-items: flex-start; justify-content: center; grid-row: 1; grid-column: 1; }
+    #art { width: min(100%, 42vh); height: auto; aspect-ratio: 1; border-radius: 10px; }
+    #song { width: 100%; }
+    #title { font-size: 17px; }
+    #artist { font-size: 14px; }
+    #stage { grid-row: 1; grid-column: 2; }
+    #foot { grid-row: 2; grid-column: 1 / -1; }
+    #clock { font-size: clamp(90px, 42vmin, 190px); }
+
+    /* Sideways there is width to spare but little height, so the same split runs left to right. */
+    #now.split {
+      --lyric-size: clamp(23px, 3.9vw, 34px);
+      grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      column-gap: 32px; row-gap: 8px;
+    }
+    #now.split #meta { grid-row: 1; grid-column: 2; flex-direction: row; align-items: center; justify-content: flex-start; }
+    #now.split #art { width: 44px; height: 44px; aspect-ratio: auto; border-radius: 7px; }
+    #now.split #song { width: auto; }
+    #now.split #stage { grid-row: 1 / 3; grid-column: 1; }
+    #now.split #gloss { grid-row: 2; grid-column: 2; border-top: 0; padding-top: 4px; justify-content: center; }
+    #now.split #foot { grid-row: 3; grid-column: 1 / -1; }
+    #gloss-roman { font-size: calc(var(--gs, 1) * clamp(21px, 3.3vw, 30px)); }
+    #gloss-english { font-size: calc(var(--gs, 1) * clamp(17px, 2.5vw, 23px)); }
+    #tb-text { font-size: clamp(22px, 3.4vw, 32px); }
+    #tidbits { gap: 10px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #lines, #stage.plain #lines, #idle { transition: none; }
+    #lines li.gap.current { animation: none; }
+    .spin { animation: breathe 1.6s ease-in-out infinite; }
+  }
+</style>
+</head>
+<body>
+<div id="backdrop"></div>
+<canvas id="vis" aria-hidden="true"></canvas>
+
+<main id="now" hidden>
+  <header id="meta">
+    <div id="art" hidden></div>
+    <div id="song">
+      <div id="title"></div>
+      <div id="artist"></div>
+    </div>
+  </header>
+  <section id="stage" aria-live="off">
+    <ol id="lines"></ol>
+    <p id="note" hidden></p>
+    <div id="vis-lyric"><p id="vis-line" dir="auto"></p></div>
+    <p id="vis-note" hidden></p>
+    <div id="tidbits">
+      <div id="tb-load"><p id="tb-label"></p><span id="tb-track"><span id="tb-fill"></span></span></div>
+      <div id="tb-show" hidden><p id="tb-text" dir="auto"></p><p id="tb-source"></p><div id="tb-dots"></div></div>
+      <p id="tb-note" hidden></p>
+    </div>
+  </section>
+  <section id="gloss" hidden>
+    <p id="gloss-roman" dir="auto"></p>
+    <p id="gloss-english" dir="auto"></p>
+    <p id="gloss-wait" hidden>
+      <svg class="spin" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="26 12"/></svg>
+      Translating…
+    </p>
+  </section>
+  <footer id="foot">
+    <nav id="tabs" role="tablist" aria-label="View">
+      <button id="tab-lyrics" role="tab" aria-selected="true">Lyrics</button>
+      <button id="tab-vis" role="tab" aria-selected="false">Visualizer</button>
+      <button id="tab-tidbits" role="tab" aria-selected="false">Tidbits</button>
+    </nav>
+    <div id="bar"><span id="fill"></span></div>
+    <span id="tag" hidden></span>
+  </footer>
+</main>
+
+<section id="idle">
+  <div id="clock"></div>
+  <div id="date"></div>
+  <p id="idle-note" hidden></p>
+</section>
+
+<div id="offline" hidden>Can't reach your Mac. Retrying.</div>
+
+<div id="timing" class="off">
+  <div class="row transport">
+    <button id="previous" aria-label="Previous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2.5v14H6zM20 5v14L9.5 12z"/></svg></button>
+    <button id="play" aria-label="Play or pause">
+      <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15L20 12z"/></svg>
+      <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 5H10v14H6.5zM14 5h3.5v14H14z"/></svg>
+    </button>
+    <button id="next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5H18v14h-2.5zM4 5v14l10.5-7z"/></svg></button>
+  </div>
+  <div class="row">
+    <button id="show-roman" class="mode" aria-label="Show transliteration" aria-pressed="true">Abc</button>
+    <button id="show-english" class="mode" aria-label="Show English translation" aria-pressed="true">EN</button>
+    <button id="earlier" aria-label="Show lyrics earlier">−</button>
+    <output id="offset"></output>
+    <button id="later" aria-label="Show lyrics later">+</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const POLL_MS = 1000;
+const IDLE_AFTER_PAUSE_MS = 5 * 60 * 1000;
+const STEP = 0.25;
+
+const view = { key: null, status: null, lines: [], plain: false, offset: 0, active: -2, plainY: null, art: null, roman: {}, english: {}, translating: false, hasExtras: false };
+const clock = { pos: 0, at: performance.now(), running: false };
+let duration = 0, pausedSince = null, failures = 0, timingTimer = null;
+
+function store(action) { try { return action(localStorage); } catch { return null; } }
+const loadOffset = key => Number(store(s => s.getItem('offset:' + key))) || 0;
+const saveOffset = (key, v) => store(s => v ? s.setItem('offset:' + key, v) : s.removeItem('offset:' + key));
+const extras = {
+  roman: store(s => s.getItem('show:roman')) !== '0',
+  english: store(s => s.getItem('show:english')) !== '0',
+};
+let activeTab = ['vis', 'tidbits'].includes(store(s => s.getItem('tab'))) ? store(s => s.getItem('tab')) : 'lyrics';
+const vis = {
+  source: null, running: false, last: 0, playing: false, error: '', lastSound: 0, ceiling: .3,
+  vocalRaw: 0, vocal: 0, vocalFloor: .5, vocalTop: .6, lastFrame: 0, wordsRunning: false, wordsLast: 0, sungIndex: -9, sung: 0,
+  target: new Array(32).fill(0), wave: new Array(96).fill(127.5), bands: new Array(32).fill(0),
+  time: 0, bass: 0, bassAvg: 0, kick: 0, energy: 0, spin: 0,
+  lineWords: [], lineFont: '', center: [.5, .5], scrim: [.5, .5, .4, .2], scrimOn: 0, scrimTarget: 0,
+  noScene: false, ripples: [],
+};
+const touches = [];
+const tidbit = { key: null, status: '', items: [], index: 0, shown: 0, dwell: 8, step: 0, steps: 4, stepAt: 0, label: '', timer: 0 };
+const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const FALLBACK_PALETTE = { voice: [.98, .66, .4], music: [.26, .36, .86], deep: [.05, .06, .13] };
+const palette = {
+  goal: FALLBACK_PALETTE,
+  voice: [...FALLBACK_PALETTE.voice], music: [...FALLBACK_PALETTE.music], deep: [...FALLBACK_PALETTE.deep],
+};
+const scene = { gl: null };
+
+function position() {
+  return clock.running ? clock.pos + (performance.now() - clock.at) / 1000 : clock.pos;
+}
+
+function syncClock(measured, running) {
+  const drift = measured - position();
+  if (!running || !clock.running || Math.abs(drift) > 0.4) {
+    clock.pos = measured;
+    clock.at = performance.now();
+  } else {
+    clock.pos += drift * 0.2;   // nudge gently so lines never jump on a noisy reading
+  }
+  clock.running = running;
+}
+
+function clearLyrics() {
+  $('lines').textContent = '';
+  $('lines').style.transform = 'translateY(0)';
+  $('stage').classList.remove('plain', 'extras');
+  view.roman = {};
+  view.english = {};
+  view.translating = false;
+  view.hasExtras = false;
+  view.lines = [];
+  view.plain = false;
+  view.active = -2;
+  view.plainY = null;
+  syncSplit();
+}
+
+function note(text) {
+  $('note').textContent = text || '';
+  $('note').hidden = !text;
+}
+
+function showTab() {
+  $('stage').classList.toggle('vis', activeTab === 'vis');
+  $('stage').classList.toggle('tidbits', activeTab === 'tidbits');
+  for (const name of ['lyrics', 'vis', 'tidbits']) $('tab-' + name).setAttribute('aria-selected', activeTab === name);
+  syncSplit();
+  syncLevels();
+  if (activeTab === 'lyrics') placeActive(true);
+  else if (activeTab === 'vis') fitVisLine();
+  else loadTidbits();
+}
+
+function setTab(name) {
+  activeTab = name;
+  store(s => s.setItem('tab', name));
+  showTab();
+}
+
+const onScreen = () => !document.hidden && !$('now').hidden;
+const visWanted = () => activeTab === 'vis' && onScreen();
+const levelsWanted = () => onScreen() && (vis.playing || activeTab === 'vis');
+
+function syncLevels() {
+  document.body.classList.toggle('vis-on', visWanted());
+  if (visWanted() && !scene.gl && !vis.noScene) startScene();
+  const want = levelsWanted();
+  if (want && !vis.source) {
+    vis.lastSound = performance.now();
+    vis.source = new EventSource('/api/levels');
+    vis.source.onmessage = e => {
+      const data = JSON.parse(e.data);
+      vis.error = data.error || '';
+      if (data.error) return;
+      vis.target = data.b;
+      vis.wave = data.w;
+      vis.vocalRaw = (data.v || 0) / 255;
+      vis.lastFrame = performance.now();
+      if (data.b.some(v => v > 0)) vis.lastSound = performance.now();
+    };
+  } else if (!want && vis.source) {
+    vis.source.close();
+    vis.source = null;
+  }
+  if (visWanted() && !vis.running) {
+    vis.running = true;
+    vis.last = performance.now();
+    sizeVis();
+    requestAnimationFrame(drawVis);
+  }
+  if (onScreen() && !vis.wordsRunning) {
+    vis.wordsRunning = true;
+    vis.wordsLast = performance.now();
+    requestAnimationFrame(wordFrame);
+  }
+}
+
+function updateVocal(dt) {
+  // Compares the voice estimate with its own recent range, so any mix or volume works.
+  const raw = vis.vocalRaw;
+  vis.vocalFloor = Math.min(raw, vis.vocalFloor + .03 * dt);
+  vis.vocalTop = Math.max(raw, vis.vocalTop - .04 * dt, vis.vocalFloor + .1);
+  const target = Math.min(1, Math.max(0, (raw - vis.vocalFloor) / (vis.vocalTop - vis.vocalFloor)));
+  vis.vocal += (target - vis.vocal) * Math.min(1, dt * (target > vis.vocal ? 30 : 7));
+}
+
+function paintWords(words, sung) {
+  const weights = [...words].map(word => Math.max(2, Array.from(word.textContent).length));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let used = 0;
+  [...words].forEach((word, i) => {
+    const from = used / total;
+    used += weights[i];
+    const to = used / total;
+    const state = sung >= to ? 'word sung' : sung <= from ? 'word' : 'word active';
+    if (word.className !== state) word.className = state;
+    if (state === 'word active') {
+      word.style.setProperty('--p', Math.round((sung - from) / (to - from) * 100));
+      word.style.setProperty('--v', vis.vocal.toFixed(2));
+    }
+  });
+}
+
+function wordFrame(now) {
+  if (!onScreen()) { vis.wordsRunning = false; return; }
+  requestAnimationFrame(wordFrame);
+  const dt = Math.min(.1, (now - vis.wordsLast) / 1000);
+  vis.wordsLast = now;
+  updateVocal(dt);
+
+  const line = view.lines[view.active];
+  if (!line || !line.text) { vis.sungIndex = view.active; return; }
+  const next = view.lines[view.active + 1];
+  const windowLength = Math.max(.3, (next ? next.t : line.t + 6) - line.t);
+  const original = line.text.trim();
+  const letters = (view.roman[original] || original).replace(/\s/g, '').length;
+  // Most lines are sung in less time than the gap before the next one.
+  // A held, slow line fills the time it has, up to a slow singing pace; a long gap doesn't stretch it.
+  const singing = Math.max(.25, Math.min(windowLength * .92, Math.max(1.2, letters * .22, Math.min(windowLength * .85, letters * .75))));
+  const expected = (Math.max(0, position()) + view.offset - line.t) / singing;
+
+  if (vis.sungIndex !== view.active) {
+    vis.sungIndex = view.active;
+    vis.sung = Math.max(0, Math.min(1, expected));
+  } else if (clock.running) {
+    // Moves with the voice, but stays anchored to the line's real timing.
+    const heard = performance.now() - vis.lastFrame < 1500;
+    const pace = !heard ? 1 : vis.vocal > .38 ? 1.2 : .3;
+    vis.sung += dt / singing * pace;
+    vis.sung = Math.max(expected - .22, Math.min(expected + .12, vis.sung));
+    vis.sung = Math.max(0, Math.min(1, vis.sung));
+  }
+
+  const li = $('lines').children[view.active];
+  if (li) {
+    paintWords(li.querySelectorAll('.original .word'), vis.sung);
+  }
+  if (activeTab === 'vis') paintWords($('vis-line').querySelectorAll('.word'), vis.sung);
+  else if (activeTab === 'lyrics') paintWords($('gloss-roman').querySelectorAll('.word'), vis.sung);
+}
+
+function setWords(element, text) {
+  element.textContent = '';
+  for (const part of text.split(/(\s+)/)) {
+    if (!part) continue;
+    if (!part.trim()) { element.append(part); continue; }
+    const word = document.createElement('span');
+    word.className = 'word';
+    word.textContent = part;
+    element.append(word);
+  }
+}
+
+// --- The visualizer ------------------------------------------------------------
+// One image that keeps feeding on itself: each frame is the last frame, drifted outward
+// and faded, with this frame's "ink" added. Red ink is the words being sung; green ink is
+// a ring shaped by the music. The final pass colors each from the album art.
+
+const FIELD_SCALE = .6;   // the field is soft by nature, so it runs well below screen resolution
+
+const VERTEX = `attribute vec2 corner; varying vec2 v;
+void main() { v = corner * .5 + .5; gl_Position = vec4(corner, 0., 1.); }`;
+
+const FLOW_SHADER = `precision highp float;
+varying vec2 v;
+uniform sampler2D field, ink;
+uniform vec2 aspect, center;
+uniform float time, zoom, twist, curl, fade, floorFade;
+uniform vec4 touch[3];
+void main() {
+  vec2 p = (v - center) * aspect;
+  for (int i = 0; i < 3; i++) {   // a moving finger drags the picture along with it
+    vec2 d = (v - touch[i].xy) * aspect;
+    p -= touch[i].zw * aspect * exp(-dot(d, d) / .03);
+  }
+  p *= 1. - zoom;
+  float a = twist * (.35 + length(p));
+  float c = cos(a), s = sin(a);
+  p = vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+  p += curl * vec2(sin(p.y * 6. + time * .7) + .5 * sin(p.y * 13. - time * 1.1),
+                   sin(p.x * 6. - time * .6) + .5 * sin(p.x * 11. + time * .9));
+  vec3 old = max(texture2D(field, p / aspect + center).rgb * fade - floorFade, 0.);
+  vec3 added = texture2D(ink, v).rgb;
+  gl_FragColor = vec4(old + added * (1. - old), 1.);
+}`;
+
+const SHOW_SHADER = `precision highp float;
+varying vec2 v;
+uniform sampler2D field;
+uniform vec3 voice, music, deep;
+uniform vec4 scrim;
+uniform float time, scrimOn, kick;
+float grain(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + time) * 43758.5453); }
+void main() {
+  vec3 f = texture2D(field, v).rgb;
+  float sound = f.g * f.g * (3. - 2. * f.g);
+  vec3 color = deep * (1. + kick * .6) + music * sound + voice * f.r * 1.15;
+  color += (voice + music) * sound * f.r * .35;
+  color += (voice + music) * .62 * f.b;
+  float q = length((v - scrim.xy) / scrim.zw);
+  color = 1. - exp(-color * 1.05);   // bright overlaps stay colored instead of clipping to white
+  color *= 1. - .74 * scrimOn * (1. - smoothstep(.72, 1.5, q));   // keeps the words readable
+  color *= (.4 + .6 * smoothstep(0., .17, v.y)) * (.4 + .6 * smoothstep(0., .14, 1. - v.y));
+  gl_FragColor = vec4(color + (grain(gl_FragCoord.xy) - .5) * 2. / 255., 1.);
+}`;
+
+function makeProgram(gl, fragment) {
+  const program = gl.createProgram();
+  for (const [type, source] of [[gl.VERTEX_SHADER, VERTEX], [gl.FRAGMENT_SHADER, fragment]]) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    gl.attachShader(program, shader);
+  }
+  gl.bindAttribLocation(program, 0, 'corner');
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+  const uniforms = {};
+  for (let i = 0; i < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); i++) {
+    const name = gl.getActiveUniform(program, i).name;
+    uniforms[name] = gl.getUniformLocation(program, name);
+  }
+  return { program, uniforms };
+}
+
+function makeTexture(gl) {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return texture;
+}
+
+function startScene() {
+  const canvas = $('vis');
+  if (!scene.listening) {
+    scene.listening = true;
+    canvas.addEventListener('webglcontextlost', e => {
+      e.preventDefault();
+      scene.gl = null;
+      document.body.classList.remove('vis-gl');
+    });
+    canvas.addEventListener('webglcontextrestored', () => { startScene(); sizeVis(); });
+  }
+  const gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' });
+  if (!gl) { vis.noScene = true; return; }   // the blurred album art stays behind the words
+  try {
+    scene.flow = makeProgram(gl, FLOW_SHADER);
+    scene.show = makeProgram(gl, SHOW_SHADER);
+  } catch {
+    vis.noScene = true;
+    return;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  scene.inkTexture = makeTexture(gl);
+  scene.inkCanvas = scene.inkCanvas || document.createElement('canvas');
+  scene.inkContext = scene.inkContext || scene.inkCanvas.getContext('2d', { alpha: false });
+  scene.fields = [0, 1].map(() => ({ texture: makeTexture(gl), buffer: gl.createFramebuffer() }));
+  scene.w = 0;
+  scene.gl = gl;
+  document.body.classList.add('vis-gl');
+}
+
+function sizeVis() {
+  const canvas = $('vis'), gl = scene.gl;
+  if (gl && canvas.clientWidth) {
+    const scale = Math.min(2, devicePixelRatio || 1);
+    const width = Math.round(canvas.clientWidth * scale), height = Math.round(canvas.clientHeight * scale);
+    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+    const fieldW = Math.max(2, Math.round(canvas.clientWidth * FIELD_SCALE));
+    const fieldH = Math.max(2, Math.round(canvas.clientHeight * FIELD_SCALE));
+    if (scene.w !== fieldW || scene.h !== fieldH) {
+      scene.w = fieldW;
+      scene.h = fieldH;
+      scene.inkCanvas.width = fieldW;
+      scene.inkCanvas.height = fieldH;
+      for (const field of scene.fields) {
+        gl.bindTexture(gl.TEXTURE_2D, field.texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fieldW, fieldH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, field.buffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, field.texture, 0);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+    }
+  }
+  fitVisLine();
+}
+
+// Sets the line as large as it will fit, then records where each word landed so the
+// words can be drawn into the picture in the same places.
+function fitVisLine() {
+  const canvas = $('vis'), box = $('vis-lyric'), line = $('vis-line');
+  vis.lineWords = [];
+  vis.scrimTarget = 0;
+  if (!box.clientHeight) return;
+  const screenW = canvas.clientWidth || innerWidth, screenH = canvas.clientHeight || innerHeight;
+  const stage = $('stage').getBoundingClientRect();
+  vis.center = [(stage.left + stage.width / 2) / screenW, 1 - (stage.top + stage.height / 2) / screenH];
+  vis.ring = [stage.width * .47 / screenW, stage.height * .44 / screenH];
+  if (!line.textContent) return;
+
+  let size = Math.min(box.clientWidth * .125, box.clientHeight * .2, 72);
+  line.style.fontSize = size + 'px';
+  while (size > 18 && (line.scrollWidth > box.clientWidth + 1 || line.offsetHeight > box.clientHeight * .84)) {
+    size -= 2;
+    line.style.fontSize = size + 'px';
+  }
+
+  const k = scene.w ? scene.w / screenW : 1;
+  const style = getComputedStyle(line);
+  vis.lineFont = `${style.fontWeight} ${size * k}px ${style.fontFamily}`;
+  let left = Infinity, right = 0, top = Infinity, bottom = 0;
+  vis.lineWords = [...line.querySelectorAll('.word')].map(el => {
+    const r = el.getBoundingClientRect();
+    left = Math.min(left, r.left); right = Math.max(right, r.right);
+    top = Math.min(top, r.top); bottom = Math.max(bottom, r.bottom);
+    return { el, text: el.textContent, x: (r.left + r.width / 2) * k, y: (r.top + r.height / 2) * k };
+  });
+  vis.scrim = [
+    (left + right) / 2 / screenW, 1 - (top + bottom) / 2 / screenH,
+    Math.max(.2, (right - left) / 2 / screenW * 1.25), Math.max(.06, (bottom - top) / 2 / screenH * 1.3),
+  ];
+  vis.scrimTarget = 1;
+}
+
+function readMusic(now, dt) {
+  const live = now - vis.lastFrame < 800;
+  vis.ceiling = Math.max(Math.max(...vis.target) / 255, vis.ceiling - .05 * dt, .3);
+  let total = 0;
+  for (let i = 0; i < vis.bands.length; i++) {
+    const level = live ? Math.min(1, (vis.target[i] || 0) / 255 / vis.ceiling) : 0;
+    vis.bands[i] += (level - vis.bands[i]) * Math.min(1, dt * (level > vis.bands[i] ? 26 : 6));
+    total += vis.bands[i];
+  }
+  vis.energy = total / vis.bands.length;
+  vis.bass = (vis.bands[0] + vis.bands[1] + vis.bands[2] + vis.bands[3] + vis.bands[4] + vis.bands[5]) / 6;
+  vis.bassAvg += (vis.bass - vis.bassAvg) * Math.min(1, dt * 1.6);
+  vis.kick = Math.max(vis.kick - dt * 3.2, Math.min(1, Math.max(0, (vis.bass - vis.bassAvg) * 3.4)));
+}
+
+function drawInk(dt) {
+  const c = scene.inkContext, W = scene.w, H = scene.h;
+  c.globalCompositeOperation = 'source-over';
+  c.fillStyle = '#000';
+  c.fillRect(0, 0, W, H);
+  c.globalCompositeOperation = 'lighter';
+  const flow = Math.min(1, dt * 45);
+
+  // A ring around the line, pushed out of shape by the music. Low notes sit at one
+  // side and high notes at the other, mirrored so the loop closes without a seam.
+  const cx = vis.center[0] * W, cy = (1 - vis.center[1]) * H;
+  const [ringX, ringY] = vis.ring || [.4, .3];
+  const count = 96, points = [];
+  for (let i = 0; i < count; i++) {
+    const mirror = Math.abs(i / count * 2 - 1);
+    const place = mirror * (vis.bands.length - 1), low = Math.floor(place);
+    const band = vis.bands[low] + (vis.bands[Math.min(low + 1, vis.bands.length - 1)] - vis.bands[low]) * (place - low);
+    const shake = (vis.wave[Math.round(mirror * (vis.wave.length - 1))] - 127.5) / 127.5;
+    const reach = .8 + band * band * .32 + shake * .04 + vis.kick * .04;   // stays clear of the words
+    const angle = i / count * Math.PI * 2 + vis.spin;
+    points.push([cx + Math.cos(angle) * ringX * W * reach, cy + Math.sin(angle) * ringY * H * reach]);
+  }
+  c.strokeStyle = `rgba(0, 255, 0, ${(.1 + Math.min(1, vis.energy * 1.5) * .9) * flow})`;
+  c.lineWidth = (1 + vis.kick * 2) * W / 234;
+  c.lineJoin = 'round';
+  c.beginPath();
+  points.forEach((point, i) => {
+    const next = points[(i + 1) % count];
+    const midX = (point[0] + next[0]) / 2, midY = (point[1] + next[1]) / 2;
+    if (i) c.quadraticCurveTo(point[0], point[1], midX, midY); else c.moveTo(midX, midY);
+  });
+  c.closePath();
+  c.stroke();
+
+  // The word being sung gives off light with the voice, then keeps a little glow.
+  c.font = vis.lineFont;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  for (const word of vis.lineWords) {
+    const state = word.el.className;
+    const level = state.includes('active') ? .3 + vis.vocal * .7 : state.includes('sung') ? .06 + vis.vocal * .2 : 0;
+    if (!level) continue;
+    c.fillStyle = `rgba(255, 0, 0, ${level * flow})`;
+    c.fillText(word.text, word.x, word.y);
+  }
+
+  // Touch: light under the finger, and a ripple where it landed.
+  for (const touch of touches) {
+    if (!touch.down) continue;
+    const x = touch.x * W, y = (1 - touch.y) * H, reach = W * .1;
+    const glow = c.createRadialGradient(x, y, 0, x, y, reach);
+    glow.addColorStop(0, `rgba(0, 0, 255, ${.5 * flow})`);
+    glow.addColorStop(1, 'rgba(0, 0, 255, 0)');
+    c.fillStyle = glow;
+    c.fillRect(x - reach, y - reach, reach * 2, reach * 2);
+  }
+  vis.ripples = vis.ripples.filter(ripple => (ripple.age += dt) < .8);
+  c.lineWidth = W / 130;
+  for (const ripple of vis.ripples) {
+    c.strokeStyle = `rgba(0, 0, 255, ${(1 - ripple.age / .8) * .85 * flow})`;
+    c.beginPath();
+    c.arc(ripple.x * W, (1 - ripple.y) * H, W * (.04 + ripple.age * .6), 0, Math.PI * 2);
+    c.stroke();
+  }
+}
+
+function stepField(dt) {
+  const gl = scene.gl, { program, uniforms: u } = scene.flow, calm = calmMotion.matches;
+  const [from, to] = scene.fields;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, to.buffer);
+  gl.viewport(0, 0, scene.w, scene.h);
+  gl.useProgram(program);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, from.texture);
+  gl.uniform1i(u.field, 0);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, scene.inkTexture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scene.inkCanvas);
+  gl.uniform1i(u.ink, 1);
+  const short = Math.min(scene.w, scene.h);
+  gl.uniform2f(u.aspect, scene.w / short, scene.h / short);
+  gl.uniform2f(u.center, vis.center[0], vis.center[1]);
+  gl.uniform1f(u.time, vis.time);
+  gl.uniform1f(u.zoom, calm ? 0 : 1 - Math.exp(-(.2 + vis.kick * 1.1 + vis.energy * .22) * dt));
+  gl.uniform1f(u.twist, calm ? 0 : Math.sin(vis.time * .09) * (.08 + vis.vocal * .34) * dt);
+  gl.uniform1f(u.curl, calm ? 0 : .07 * (1 + vis.energy * 2) * dt);
+  gl.uniform1f(u.fade, Math.exp(-(calm ? 2.4 : 1.05) * dt));
+  gl.uniform1f(u.floorFade, .6 / 255 * dt * 60);
+  const pull = new Float32Array(12);
+  touches.slice(0, 3).forEach((touch, i) => {
+    pull.set(calm ? [touch.x, touch.y, 0, 0] : [touch.x, touch.y, touch.vx * 1.2, touch.vy * 1.2], i * 4);
+    touch.vx *= .7;
+    touch.vy *= .7;
+  });
+  gl.uniform4fv(u['touch[0]'], pull);
+  for (let i = touches.length - 1; i >= 0; i--) {
+    if (!touches[i].down && Math.hypot(touches[i].vx, touches[i].vy) < .0003) touches.splice(i, 1);
+  }
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  scene.fields = [to, from];
+}
+
+function showField(dt) {
+  const gl = scene.gl, canvas = $('vis'), { program, uniforms: u } = scene.show;
+  const blend = Math.min(1, dt * 1.6);
+  for (const name of ['voice', 'music', 'deep']) {
+    palette[name] = palette[name].map((value, i) => value + (palette.goal[name][i] - value) * blend);
+  }
+  vis.scrimOn += (vis.scrimTarget - vis.scrimOn) * Math.min(1, dt * 5);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(program);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, scene.fields[0].texture);
+  gl.uniform1i(u.field, 0);
+  gl.uniform3fv(u.voice, palette.voice);
+  gl.uniform3fv(u.music, palette.music);
+  gl.uniform3fv(u.deep, palette.deep);
+  gl.uniform4fv(u.scrim, vis.scrim);
+  gl.uniform1f(u.scrimOn, vis.scrimOn);
+  gl.uniform1f(u.kick, vis.kick);
+  gl.uniform1f(u.time, vis.time % 100);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+function fromHSV(h, s, v) {
+  const f = (n, k = (n + h * 6) % 6) => v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+  return [f(5), f(3), f(1)];
+}
+
+function paletteFrom(image) {
+  const size = 40, sample = document.createElement('canvas');
+  sample.width = sample.height = size;
+  const c = sample.getContext('2d', { willReadFrequently: true });
+  c.drawImage(image, 0, 0, size, size);
+  const data = c.getImageData(0, 0, size, size).data;
+  const bins = new Array(24).fill(0);
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
+    const top = Math.max(r, g, b), range = top - Math.min(r, g, b);
+    if (!range) continue;
+    const hue = top === r ? ((g - b) / range + 6) % 6 : top === g ? (b - r) / range + 2 : (r - g) / range + 4;
+    bins[Math.floor(hue * 4) % 24] += (range / top) * (range / top) * top;
+  }
+  const first = bins.indexOf(Math.max(...bins));
+  if (bins[first] / (size * size) < .012) {
+    return { voice: [.93, .9, .85], music: [.4, .43, .5], deep: [.05, .05, .06] };   // black-and-white art
+  }
+  const apart = i => Math.min((i - first + 24) % 24, (first - i + 24) % 24);
+  const others = bins.map((score, i) => (apart(i) >= 4 ? score : 0));
+  const best = Math.max(...others);
+  const second = best > bins[first] * .04 ? others.indexOf(best) : (first + 3) % 24;
+  const musicHue = (first + .5) / 24, voiceHue = (second + .5) / 24;
+  return { music: fromHSV(musicHue, .72, .78), voice: fromHSV(voiceHue, .58, 1), deep: fromHSV(musicHue, .62, .12) };
+}
+
+function setPalette(chosen) {
+  palette.goal = chosen;
+  document.documentElement.style.setProperty('--accent', `rgb(${chosen.voice.map(v => Math.round(v * 255)).join(' ')})`);
+}
+
+function loadPalette(art) {
+  if (!art) { setPalette(FALLBACK_PALETTE); return; }
+  const image = new Image();
+  image.onload = () => {
+    if (view.art !== art) return;
+    try { setPalette(paletteFrom(image)); } catch { setPalette(FALLBACK_PALETTE); }
+  };
+  image.src = '/art?id=' + art;
+}
+
+function screenPoint(event) {
+  const canvas = $('vis');
+  return [event.clientX / (canvas.clientWidth || innerWidth), 1 - event.clientY / (canvas.clientHeight || innerHeight)];
+}
+
+// A touch only ever moves the picture. Controls open with a double tap, on any tab.
+let press = null, lastTap = { at: -1e9, x: 0, y: 0 };
+
+function pointerDown(event) {
+  if (event.target.closest('#tabs')) return;
+  press = { id: event.pointerId, x: event.clientX, y: event.clientY, at: event.timeStamp };
+  if (activeTab !== 'vis') return;
+  const [x, y] = screenPoint(event);
+  if (touches.length < 3) touches.push({ id: event.pointerId, x, y, vx: 0, vy: 0, down: true });
+  if (!calmMotion.matches) vis.ripples = [...vis.ripples.slice(-5), { x, y, age: 0 }];
+  try { $('now').setPointerCapture(event.pointerId); } catch { /* the touch still works */ }
+}
+
+function pointerMove(event) {
+  const touch = touches.find(t => t.id === event.pointerId && t.down);
+  if (!touch) return;
+  const [x, y] = screenPoint(event);
+  touch.vx += x - touch.x;
+  touch.vy += y - touch.y;
+  touch.x = x;
+  touch.y = y;
+}
+
+function pointerEnd(event) {
+  const touch = touches.find(t => t.id === event.pointerId && t.down);
+  if (touch) touch.down = false;
+  if (event.type !== 'pointerup' || !press || press.id !== event.pointerId) return;
+  const still = Math.hypot(event.clientX - press.x, event.clientY - press.y) < 14;
+  const quick = event.timeStamp - press.at < 350;
+  press = null;
+  if (!still || !quick) return;
+  if (event.timeStamp - lastTap.at < 340 && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 48) {
+    lastTap.at = -1e9;
+    toggleControls();
+  } else {
+    lastTap = { at: event.timeStamp, x: event.clientX, y: event.clientY };
+  }
+}
+
+function showVisNote(now) {
+  const silent = vis.playing && now - vis.lastSound > 5000;
+  const text = vis.error || (silent ? 'No sound is reaching the visualizer. On the Mac, allow System Audio Recording in Privacy & Security.' : '');
+  if ($('vis-note').textContent !== text) $('vis-note').textContent = text;
+  $('vis-note').hidden = !text;
+}
+
+function drawVis(now) {
+  if (!visWanted()) { vis.running = false; return; }
+  requestAnimationFrame(drawVis);
+  if (!vis.playing && !touches.length && !vis.ripples.length && now - vis.last < 100) return;   // no need to run hard while paused
+  const dt = Math.min(.1, (now - vis.last) / 1000);
+  vis.last = now;
+  vis.time += dt;
+  vis.spin += calmMotion.matches ? 0 : dt * (.05 + vis.vocal * .12);
+  showVisNote(now);
+  showVisLine();
+  readMusic(now, dt);
+  if (!scene.gl || !scene.w) return;
+  drawInk(dt);
+  stepField(dt);
+  showField(dt);
+}
+
+function fillLine(li, text) {
+  li.dataset.text = text.trim();
+  for (const part of ['original', 'roman', 'english']) {
+    const span = document.createElement('span');
+    span.className = part;
+    span.dir = 'auto';
+    if (part === 'original') setWords(span, text);
+    li.append(span);
+  }
+}
+
+function applyExtras() {
+  let any = false;
+  for (const li of $('lines').children) {
+    if (!li.dataset.text) continue;
+    const roman = view.roman[li.dataset.text] || '';
+    const english = view.english[li.dataset.text] || '';
+    const romanLine = li.querySelector('.roman');
+    if (romanLine.textContent !== roman) setWords(romanLine, roman);
+    li.querySelector('.english').textContent = english;
+    if ((roman && extras.roman) || (english && extras.english)) any = true;
+  }
+  $('stage').classList.toggle('extras', any && view.plain);
+  view.hasExtras = any;
+  syncSplit();
+  placeActive(true);
+}
+
+function syncSplit() {
+  const split = activeTab === 'lyrics' && view.lines.length > 0 && (view.hasExtras || (view.translating && extras.english));
+  const was = $('now').classList.contains('split');
+  $('now').classList.toggle('split', split);
+  $('gloss').hidden = !split;
+  if (split) showGloss();
+  if (split !== was) placeActive(true);
+}
+
+function showGloss() {
+  const line = view.lines[view.active];
+  const original = line && line.text ? line.text.trim() : '';
+  const roman = extras.roman ? view.roman[original] || '' : '';
+  const english = extras.english ? view.english[original] || '' : '';
+  const romanLine = $('gloss-roman'), englishLine = $('gloss-english');
+  $('gloss-wait').hidden = !(view.translating && extras.english);
+  const changed = romanLine.textContent !== roman || englishLine.textContent !== english;
+  if (!changed) return;
+  if (romanLine.textContent !== roman) setWords(romanLine, roman);
+  englishLine.textContent = english;
+  const gloss = $('gloss');
+  let scale = 1;
+  gloss.style.setProperty('--gs', scale);
+  while (scale > .6 && gloss.scrollHeight > gloss.clientHeight + 1) {
+    scale -= .08;
+    gloss.style.setProperty('--gs', scale);
+  }
+  if (roman || english) gloss.animate({ opacity: [.25, 1] }, { duration: 220, easing: 'ease-out' });
+}
+
+function showExtras() {
+  document.body.classList.toggle('no-roman', !extras.roman);
+  document.body.classList.toggle('no-english', !extras.english);
+  $('show-roman').setAttribute('aria-pressed', extras.roman);
+  $('show-english').setAttribute('aria-pressed', extras.english);
+}
+
+function toggleExtra(name) {
+  extras[name] = !extras[name];
+  store(s => s.setItem('show:' + name, extras[name] ? '1' : '0'));
+  showExtras();
+  applyExtras();
+  revealTiming();
+}
+
+function setTranslating(on) {
+  if (view.translating === on) return;
+  view.translating = on;
+  syncSplit();
+}
+
+async function loadTranslation(key) {
+  let wait = 60000;
+  try {
+    const res = await fetch('/api/translation?key=' + key, { cache: 'no-store' });
+    const data = await res.json();
+    if (view.key !== key) return;
+    setTranslating(data.status === 'loading');
+    if (data.status === 'ready') { view.english = data.lines; applyExtras(); return; }
+    if (data.status === 'none') return;
+    if (data.status === 'loading') wait = 1500;
+  } catch { setTranslating(false); }
+  if (view.key === key) setTimeout(() => loadTranslation(key), wait);
+}
+
+// --- Tidbits -------------------------------------------------------------------
+
+async function loadTidbits() {
+  if (activeTab !== 'tidbits' || !view.key) return;
+  const key = view.key;
+  clearTimeout(tidbit.timer);
+  if (tidbit.key !== key) {
+    Object.assign(tidbit, { key, status: 'loading', items: [], index: 0, shown: 0, step: 0, steps: 4, stepAt: performance.now(), label: 'Looking up the song' });
+    paintTidbits();
+  } else if (tidbit.status === 'ready' || tidbit.status === 'none') {
+    return;
+  }
+  let wait = 20000;
+  try {
+    const res = await fetch('/api/tidbits?key=' + key, { cache: 'no-store' });
+    const data = await res.json();
+    if (tidbit.key !== key) return;
+    tidbit.status = data.status;
+    if (data.status === 'loading') {
+      if (data.step !== tidbit.step) { tidbit.step = data.step; tidbit.stepAt = performance.now(); }
+      tidbit.steps = data.steps;
+      tidbit.label = data.label;
+      wait = 500;
+    } else if (data.status === 'ready') {
+      tidbit.items = data.items;
+    }
+    paintTidbits();
+    if (data.status === 'ready' || data.status === 'none') return;
+  } catch {
+    if (tidbit.key !== key) return;
+    tidbit.status = 'failed';
+    paintTidbits();
+  }
+  tidbit.timer = setTimeout(loadTidbits, wait);
+}
+
+function paintTidbits() {
+  const loading = tidbit.status === 'loading', ready = tidbit.status === 'ready' && tidbit.items.length > 0;
+  $('tb-load').hidden = !loading;
+  $('tb-show').hidden = !ready;
+  $('tb-note').hidden = loading || ready;
+  if (loading) $('tb-label').textContent = tidbit.label;
+  if (!loading && !ready) {
+    $('tb-note').textContent = tidbit.status === 'failed' ? "Couldn't look this one up. Trying again soon." : 'Nothing to share about this one yet.';
+  }
+  if (ready && !$('tb-text').textContent) showTidbit(0);
+  if (!ready) { $('tb-text').textContent = ''; $('tb-dots').textContent = ''; }
+}
+
+function showTidbit(index) {
+  const item = tidbit.items[index], text = $('tb-text');
+  tidbit.index = index;
+  tidbit.shown = 0;
+  tidbit.dwell = Math.max(7, 4 + item.text.split(/\s+/).length * .34);
+  text.textContent = item.text;
+  text.className = item.kind === 'funny' ? 'funny' : '';
+  $('tb-source').textContent = 'From Wikipedia: ' + item.source;
+  $('tb-dots').textContent = '';
+  for (let i = 0; i < tidbit.items.length; i++) {
+    const dot = document.createElement('i'), bar = document.createElement('b');
+    if (i < index) bar.style.transform = 'scaleX(1)';
+    dot.append(bar);
+    $('tb-dots').append(dot);
+  }
+  text.style.fontSize = '';
+  let size = parseFloat(getComputedStyle(text).fontSize);
+  while (size > 18 && text.offsetHeight > $('stage').clientHeight * .72) {
+    size -= 2;
+    text.style.fontSize = size + 'px';
+  }
+  if (!calmMotion.matches) {
+    $('tb-show').animate({ opacity: [0, 1], transform: ['translateY(10px)', 'none'] }, { duration: 420, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+  }
+}
+
+function tickTidbits() {
+  if (activeTab !== 'tidbits' || document.hidden) return;
+  if (tidbit.status === 'loading') {
+    // Real steps from the server, with an honest creep inside the current step.
+    const creep = 1 - Math.exp(-(performance.now() - tidbit.stepAt) / (tidbit.step === tidbit.steps - 1 ? 7000 : 1400));
+    $('tb-fill').style.transform = `scaleX(${(tidbit.step + creep * .92) / tidbit.steps})`;
+  } else if (tidbit.status === 'ready' && tidbit.items.length) {
+    tidbit.shown += .1;
+    const bar = $('tb-dots').children[tidbit.index]?.firstChild;
+    if (bar) bar.style.transform = `scaleX(${Math.min(1, tidbit.shown / tidbit.dwell)})`;
+    if (tidbit.shown >= tidbit.dwell) showTidbit((tidbit.index + 1) % tidbit.items.length);
+  }
+}
+
+function renderSynced(lines) {
+  clearLyrics();
+  note('');
+  const list = [...lines];
+  if (!list.length || list[0].t > 4) list.unshift({ t: 0, text: '' });
+  view.lines = list;
+  const frag = document.createDocumentFragment();
+  for (const line of list) {
+    const li = document.createElement('li');
+    li.dir = 'auto';
+    if (line.text) fillLine(li, line.text);
+    else { li.textContent = '•••'; li.className = 'gap'; }
+    frag.append(li);
+  }
+  $('lines').append(frag);
+}
+
+function renderPlain(text) {
+  clearLyrics();
+  note('');
+  view.plain = true;
+  $('stage').classList.add('plain');
+  const frag = document.createDocumentFragment();
+  for (const row of text.split('\n')) {
+    if (!row.trim()) continue;
+    const li = document.createElement('li');
+    li.dir = 'auto';
+    fillLine(li, row);
+    frag.append(li);
+  }
+  $('lines').append(frag);
+}
+
+function currentIndex(t) {
+  const lines = view.lines;
+  let lo = 0, hi = lines.length - 1, found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (lines[mid].t <= t) { found = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return found;
+}
+
+function placeActive(force) {
+  const items = $('lines').children;
+  const li = items[view.active];
+  if (!li) return;
+  const anchor = $('stage').clientHeight * 0.4;
+  const y = Math.round(anchor - li.offsetTop - li.offsetHeight / 2);
+  if (force) {
+    $('lines').style.transition = 'none';
+    $('lines').style.transform = `translateY(${y}px)`;
+    $('lines').offsetHeight;
+    $('lines').style.transition = '';
+  } else {
+    $('lines').style.transform = `translateY(${y}px)`;
+  }
+}
+
+// The old line lifts away while its light is still drifting; the new one comes into focus.
+function showVisLine() {
+  const element = $('vis-line');
+  const line = view.lines[view.active];
+  const original = line && line.text ? line.text.trim() : '';
+  const text = view.roman[original] || original;
+  if (element.textContent === text) return;
+
+  const calm = calmMotion.matches;
+  if (element.textContent) {
+    const leaving = element.cloneNode(true);
+    leaving.removeAttribute('id');
+    leaving.className = 'vis-gone';
+    leaving.setAttribute('aria-hidden', 'true');
+    element.after(leaving);
+    leaving.animate(calm ? [{ opacity: 1 }, { opacity: 0 }] : [
+      { opacity: 1, filter: 'blur(0)', transform: 'none' },
+      { opacity: 0, filter: 'blur(10px)', transform: 'translateY(-.28em) scale(1.03)' },
+    ], { duration: 260, easing: 'ease-in', fill: 'forwards' }).onfinish = () => leaving.remove();
+  }
+  setWords(element, text);
+  fitVisLine();
+  if (text) {
+    element.animate(calm ? [{ opacity: 0 }, { opacity: 1 }] : [
+      { opacity: 0, filter: 'blur(14px)', transform: 'translateY(.22em) scale(.985)' },
+      { opacity: 1, filter: 'blur(0)', transform: 'none' },
+    ], { duration: 460, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+  }
+}
+
+function tick() {
+  const t = Math.max(0, position());
+  tickTidbits();
+  if (duration) $('fill').style.transform = `scaleX(${Math.min(1, t / duration)})`;
+
+  if (view.lines.length) {
+    const next = currentIndex(t + view.offset);
+    if (next !== view.active) {
+      const first = view.active === -2;
+      const items = $('lines').children;
+      if (items[view.active]) items[view.active].classList.remove('current');
+      const low = Math.min(view.active, next), high = Math.max(view.active, next);
+      for (let i = Math.max(0, low); i <= high && i < items.length; i++) items[i].classList.toggle('past', i < next);
+      if (first) for (let i = 0; i < next; i++) items[i].classList.add('past');
+      view.active = next;
+      if (items[next]) items[next].classList.add('current');
+      placeActive(first);
+      if (!$('gloss').hidden) showGloss();
+    }
+  } else if (view.plain && duration) {
+    const room = Math.max(0, $('lines').scrollHeight - $('stage').clientHeight);
+    // Hold the first and last bit of the song so the opening and ending stay readable.
+    const progress = Math.min(1, Math.max(0, (t / duration - 0.08) / 0.84));
+    const y = Math.round(-room * progress);
+    if (y !== view.plainY) { view.plainY = y; $('lines').style.transform = `translateY(${y}px)`; }
+  }
+}
+
+async function loadLyrics(key, status) {
+  view.status = status;
+  if (status === 'loading') { clearLyrics(); note('Finding lyrics…'); return; }
+  if (status === 'none') { clearLyrics(); note('No lyrics found for this song.'); return; }
+  if (status === 'instrumental') { clearLyrics(); note('Instrumental'); return; }
+  if (status === 'needs_setup') { clearLyrics(); note('To sync lyrics for YouTube, turn on Allow JavaScript from Apple Events in Safari’s Developer settings.'); return; }
+  if (status === 'error') { clearLyrics(); note("Can't reach the lyrics service. Trying again."); return; }
+  try {
+    const res = await fetch('/api/lyrics?key=' + key, { cache: 'no-store' });
+    const data = await res.json();
+    if (view.key !== key) return;
+    if (data.status === 'synced') renderSynced(data.lines);
+    else if (data.status === 'plain') renderPlain(data.text);
+    view.roman = data.roman || {};
+    applyExtras();
+    loadTranslation(key);
+    tick();
+  } catch { view.status = null; }   // the next poll asks again
+}
+
+function showTrack(state) {
+  const track = state.track;
+  if (view.key !== track.key) {
+    view.key = track.key;
+    view.status = null;
+    view.offset = loadOffset(track.key);
+    $('title').textContent = track.name;
+    $('artist').textContent = track.artist;
+    clearLyrics();
+    showOffset();
+    $('tb-text').textContent = '';
+    loadTidbits();
+  }
+  const art = state.art || null;
+  if (art !== view.art) {
+    view.art = art;
+    const image = art ? `url("/art?id=${art}")` : '';
+    $('art').style.backgroundImage = image;
+    $('art').hidden = !art;
+    $('backdrop').style.backgroundImage = image;
+    $('backdrop').classList.toggle('on', !!art);
+    loadPalette(art);
+  }
+  duration = track.duration || 0;
+  if (view.status !== state.lyrics) loadLyrics(track.key, state.lyrics);
+}
+
+function screen(name) {
+  const lyricsOn = name === 'now';
+  $('now').hidden = !lyricsOn;
+  $('idle').hidden = lyricsOn;
+  if (!lyricsOn) $('backdrop').classList.remove('on');
+  else if (view.art) $('backdrop').classList.add('on');
+  syncLevels();
+}
+
+function apply(state, sent) {
+  if (state.state === 'stopped' || state.state === 'unavailable') {
+    clock.running = false;
+    pausedSince = null;
+    view.key = null;
+    view.status = null;
+    view.art = null;
+    clearLyrics();
+    $('idle-note').textContent = state.detail || '';
+    $('idle-note').hidden = !state.detail;
+    screen('idle');
+    return;
+  }
+  $('idle-note').hidden = true;
+  const playing = state.state === 'playing';
+  const trip = (performance.now() - sent) / 1000;
+  syncClock(state.position + (playing ? state.age + trip / 2 : 0), playing);
+  showTrack(state);
+
+  pausedSince = playing ? null : (pausedSince ?? Date.now());
+  vis.playing = playing;
+  $('play').classList.toggle('is-playing', playing);
+  $('tag').textContent = 'Paused';
+  $('tag').hidden = playing;
+  screen(pausedSince && Date.now() - pausedSince > IDLE_AFTER_PAUSE_MS ? 'idle' : 'now');
+}
+
+async function poll() {
+  const sent = performance.now();
+  try {
+    const res = await fetch('/api/state', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+    apply(await res.json(), sent);
+    failures = 0;
+  } catch {
+    failures++;
+  }
+  $('offline').hidden = failures < 3;
+  setTimeout(poll, POLL_MS);
+}
+
+function showClock() {
+  const now = new Date();
+  $('clock').textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s?[ap]\.?m\.?/i, '');
+  $('date').textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+let driftStep = 0;
+function driftIdle() {   // moves the always-on clock slightly so it can't burn into the screen
+  const spots = [[0, 0], [10, -8], [-8, 10], [12, 12], [-12, -6], [4, 12]];
+  const [x, y] = spots[driftStep++ % spots.length];
+  $('idle').style.transform = `translate(${x}px, ${y}px)`;
+}
+
+function showOffset() {
+  const v = view.offset;
+  $('offset').textContent = v === 0 ? 'Timing: exact' : `Timing: ${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}s`;
+}
+
+function revealTiming() {
+  $('timing').classList.remove('off');
+  clearTimeout(timingTimer);
+  timingTimer = setTimeout(() => $('timing').classList.add('off'), 4500);
+}
+
+function toggleControls() {
+  if ($('timing').classList.contains('off')) { revealTiming(); return; }
+  clearTimeout(timingTimer);
+  $('timing').classList.add('off');
+}
+
+function changeOffset(delta) {
+  view.offset = Math.round((view.offset + delta) * 100) / 100;
+  saveOffset(view.key, view.offset);
+  showOffset();
+  revealTiming();
+  tick();
+}
+
+async function sendControl(action) {
+  revealTiming();
+  try {
+    await fetch('/api/control?action=' + action, {
+      method: 'POST', headers: { 'X-Desk-Lyrics': '1' }, signal: AbortSignal.timeout(6000),
+    });
+  } catch { /* the next poll shows what really happened */ }
+}
+
+$('previous').onclick = () => sendControl('previous');
+$('play').onclick = () => sendControl('toggle');
+$('next').onclick = () => sendControl('next');
+$('tab-lyrics').onclick = () => setTab('lyrics');
+$('tab-vis').onclick = () => setTab('vis');
+$('tab-tidbits').onclick = () => setTab('tidbits');
+document.addEventListener('visibilitychange', syncLevels);
+new ResizeObserver(sizeVis).observe($('vis'));
+$('show-roman').onclick = () => toggleExtra('roman');
+$('show-english').onclick = () => toggleExtra('english');
+$('earlier').onclick = () => changeOffset(STEP);
+$('later').onclick = () => changeOffset(-STEP);
+$('now').addEventListener('pointerdown', pointerDown);
+$('now').addEventListener('pointermove', pointerMove);
+$('now').addEventListener('pointerup', pointerEnd);
+$('now').addEventListener('pointercancel', pointerEnd);
+addEventListener('resize', () => placeActive(true));
+
+showOffset();
+showExtras();
+showTab();
+showClock();
+setInterval(showClock, 1000);
+setInterval(driftIdle, 60000);
+setInterval(tick, 100);
+poll();
+</script>
+</body>
+</html>

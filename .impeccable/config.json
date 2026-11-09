@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-11-09T13:20:49.271Z",
+        "reason": "Karaoke word fill: one hard-edged colour stop that shows how much of the word has been sung, a functional progress wipe rather than decoration"
+      }
+    ]
+  }
+}

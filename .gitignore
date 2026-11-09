@@ -1,0 +1,19 @@
+# Song lyrics and translations fetched while running. Never commit these.
+cache/
+
+# Built on each Mac by install.sh
+visualizer/audio_levels
+
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+
+# Xcode
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Design-check working file
+.impeccable/hook.cache.json
