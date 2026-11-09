@@ -348,7 +348,7 @@ const vis = {
   target: new Array(32).fill(0), wave: new Array(96).fill(127.5), bands: new Array(32).fill(0),
   time: 0, bass: 0, bassAvg: 0, kick: 0, energy: 0, spin: 0,
   lineWords: [], lineFont: '', center: [.5, .5], scrim: [.5, .5, .4, .2], scrimOn: 0, scrimTarget: 0,
-  noScene: false, ripples: [],
+  noScene: false, ripples: [], artBlend: 1,
 };
 const touches = [];
 const tidbit = { key: null, status: '', items: [], index: 0, shown: 0, dwell: 8, step: 0, steps: 4, stepAt: 0, label: '', timer: 0 };
@@ -561,15 +561,16 @@ void main() {
 
 const SHOW_SHADER = `precision highp float;
 varying vec2 v;
-uniform sampler2D field;
+uniform sampler2D field, artNew, artOld;
 uniform vec3 voice, music, deep;
 uniform vec4 scrim;
-uniform float time, scrimOn, kick;
+uniform float time, scrimOn, kick, artBlend;
 float grain(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + time) * 43758.5453); }
 void main() {
   vec3 f = texture2D(field, v).rgb;
   float sound = f.g * f.g * (3. - 2. * f.g);
-  vec3 color = deep * (1. + kick * .6) + music * sound + voice * f.r * 1.15;
+  vec3 cover = mix(texture2D(artOld, v).rgb, texture2D(artNew, v).rgb, artBlend);   // the album's colours, where they sit on it
+  vec3 color = deep * (1. + kick * .6) + cover * sound + voice * f.r * 1.15;
   color += (voice + music) * sound * f.r * .35;
   color += (voice + music) * .62 * f.b;
   float q = length((v - scrim.xy) / scrim.zw);
@@ -637,8 +638,13 @@ function startScene() {
   scene.inkCanvas = scene.inkCanvas || document.createElement('canvas');
   scene.inkContext = scene.inkContext || scene.inkCanvas.getContext('2d', { alpha: false });
   scene.fields = [0, 1].map(() => ({ texture: makeTexture(gl), buffer: gl.createFramebuffer() }));
+  scene.covers = [makeTexture(gl), makeTexture(gl)];
   scene.w = 0;
   scene.gl = gl;
+  const cover = palette.goal.art || solidCover(palette.goal.music);
+  uploadCover(cover);
+  uploadCover(cover);
+  vis.artBlend = 1;
   document.body.classList.add('vis-gl');
 }
 
@@ -835,6 +841,14 @@ function showField(dt) {
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, scene.fields[0].texture);
   gl.uniform1i(u.field, 0);
+  vis.artBlend = Math.min(1, vis.artBlend + dt * .8);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, scene.covers[0]);
+  gl.uniform1i(u.artNew, 1);
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, scene.covers[1]);
+  gl.uniform1i(u.artOld, 2);
+  gl.uniform1f(u.artBlend, vis.artBlend);
   gl.uniform3fv(u.voice, palette.voice);
   gl.uniform3fv(u.music, palette.music);
   gl.uniform3fv(u.deep, palette.deep);
@@ -850,34 +864,114 @@ function fromHSV(h, s, v) {
   return [f(5), f(3), f(1)];
 }
 
+function toHSV(r, g, b) {
+  const top = Math.max(r, g, b), range = top - Math.min(r, g, b);
+  if (!range) return [0, 0, top];
+  const hue = top === r ? ((g - b) / range + 6) % 6 : top === g ? (b - r) / range + 2 : (r - g) / range + 4;
+  return [hue / 6, range / top, top];
+}
+
+// Keeps a colour's character but makes sure it shows up as light on a dark screen.
+function asLight([r, g, b], minValue, minSaturation) {
+  const [h, s, v] = toHSV(r, g, b);
+  return fromHSV(h, s < .12 ? s : Math.max(s, minSaturation), Math.max(v, minValue));
+}
+
+function solidCover([r, g, b]) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 1;
+  const c = canvas.getContext('2d');
+  c.fillStyle = `rgb(${Math.round(r * 255)} ${Math.round(g * 255)} ${Math.round(b * 255)})`;
+  c.fillRect(0, 0, 1, 1);
+  return canvas;
+}
+
+function uploadCover(canvas) {
+  const gl = scene.gl;
+  if (!gl) return;
+  const [newest, older] = scene.covers;
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, older);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, canvas);
+  scene.covers = [older, newest];
+  vis.artBlend = 0;
+}
+
+// A tiny copy of the cover holding the most vivid colour from each area, since plain
+// averaging turns a busy cover beige. Black and grey areas borrow the main colour,
+// because they would otherwise show nothing when the music lights them up.
+function coverLight(image, main) {
+  const cells = 18, detail = 5, full = cells * detail;
+  const source = document.createElement('canvas'), canvas = document.createElement('canvas');
+  source.width = source.height = full;
+  canvas.width = canvas.height = cells;
+  const from = source.getContext('2d', { willReadFrequently: true });
+  from.drawImage(image, 0, 0, full, full);
+  const pixels = from.getImageData(0, 0, full, full).data;
+  const c = canvas.getContext('2d');
+  const picture = c.createImageData(cells, cells);
+  for (let y = 0; y < cells; y++) {
+    for (let x = 0; x < cells; x++) {
+      let best = null, bestScore = -1;
+      for (let py = y * detail; py < (y + 1) * detail; py++) {
+        for (let px = x * detail; px < (x + 1) * detail; px++) {
+          const i = (py * full + px) * 4;
+          const hsv = toHSV(pixels[i] / 255, pixels[i + 1] / 255, pixels[i + 2] / 255);
+          const score = hsv[1] * hsv[2];
+          if (score > bestScore) { bestScore = score; best = hsv; }
+        }
+      }
+      const [h, s, v] = best;
+      const lit = v < .14 || s < .08 ? main : fromHSV(h, Math.min(1, Math.max(s * 1.15, s < .2 ? s : .55)), Math.max(v, .76));
+      const at = (y * cells + x) * 4;
+      picture.data[at] = lit[0] * 255; picture.data[at + 1] = lit[1] * 255; picture.data[at + 2] = lit[2] * 255; picture.data[at + 3] = 255;
+    }
+  }
+  c.putImageData(picture, 0, 0);
+  return canvas;
+}
+
 function paletteFrom(image) {
   const size = 40, sample = document.createElement('canvas');
   sample.width = sample.height = size;
   const c = sample.getContext('2d', { willReadFrequently: true });
   c.drawImage(image, 0, 0, size, size);
   const data = c.getImageData(0, 0, size, size).data;
-  const bins = new Array(24).fill(0);
+  const bins = Array.from({ length: 24 }, () => ({ score: 0, pull: 0, r: 0, g: 0, b: 0 }));
+  let colourful = 0;
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
-    const top = Math.max(r, g, b), range = top - Math.min(r, g, b);
-    if (!range) continue;
-    const hue = top === r ? ((g - b) / range + 6) % 6 : top === g ? (b - r) / range + 2 : (r - g) / range + 4;
-    bins[Math.floor(hue * 4) % 24] += (range / top) * (range / top) * top;
+    const [h, s, v] = toHSV(r, g, b);
+    if (s < .12 || v < .1) continue;
+    if (s > .2 && v > .15) colourful++;
+    const weight = s * v, pull = weight * s * s, bin = bins[Math.floor(h * 24) % 24];   // vivid pixels set the shade
+    bin.score += weight; bin.pull += pull; bin.r += r * pull; bin.g += g * pull; bin.b += b * pull;
   }
-  const first = bins.indexOf(Math.max(...bins));
-  if (bins[first] / (size * size) < .012) {
-    return { voice: [.93, .9, .85], music: [.4, .43, .5], deep: [.05, .05, .06] };   // black-and-white art
+  if (colourful / (size * size) < .06) {
+    const mono = { voice: [.93, .9, .85], music: [.55, .57, .62], deep: [.05, .05, .06] };
+    return { ...mono, art: coverLight(image, mono.music) };
   }
+  const around = i => [-1, 0, 1].map(d => bins[(i + d + 24) % 24]);
+  const strength = bins.map((_, i) => around(i).reduce((sum, bin) => sum + bin.score, 0));
+  // The true average colour of that part of the cover, rather than a stock shade of its hue.
+  const colourOf = i => {
+    const group = around(i), total = group.reduce((sum, bin) => sum + bin.pull, 0) || 1;
+    return ['r', 'g', 'b'].map(key => group.reduce((sum, bin) => sum + bin[key], 0) / total);
+  };
+  const first = strength.indexOf(Math.max(...strength));
   const apart = i => Math.min((i - first + 24) % 24, (first - i + 24) % 24);
-  const others = bins.map((score, i) => (apart(i) >= 4 ? score : 0));
+  const others = strength.map((score, i) => (apart(i) >= 4 ? score : 0));
   const best = Math.max(...others);
-  const second = best > bins[first] * .04 ? others.indexOf(best) : (first + 3) % 24;
-  const musicHue = (first + .5) / 24, voiceHue = (second + .5) / 24;
-  return { music: fromHSV(musicHue, .72, .78), voice: fromHSV(voiceHue, .58, 1), deep: fromHSV(musicHue, .62, .12) };
+  const main = colourOf(first);
+  const accent = best > strength[first] * .05 ? colourOf(others.indexOf(best)) : main;
+  const music = asLight(main, .74, .5);
+  const [h, s] = toHSV(...main);
+  return { music, voice: asLight(accent, .96, .5), deep: fromHSV(h, Math.min(s, .6), .12), art: coverLight(image, music) };
 }
 
 function setPalette(chosen) {
   palette.goal = chosen;
+  uploadCover(chosen.art || solidCover(chosen.music));
   document.documentElement.style.setProperty('--accent', `rgb(${chosen.voice.map(v => Math.round(v * 255)).join(' ')})`);
 }
 
