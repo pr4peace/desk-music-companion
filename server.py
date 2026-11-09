@@ -14,6 +14,7 @@ Run:    python3 server.py        (PORT=9000 python3 server.py to change the port
 import atexit
 import base64
 import ctypes
+import functools
 import hashlib
 import json
 import os
@@ -564,10 +565,41 @@ def rank(item, track):
     )
 
 
+def timing_fits(item, track):
+    """False for lyrics timed to a longer cut of the song than the one playing."""
+    if not item.get("syncedLyrics") or not track["duration"]:
+        return True
+    lines = parse_lrc(item["syncedLyrics"])
+    return not lines or lines[-1]["t"] <= track["duration"] + 3
+
+
+@functools.lru_cache(maxsize=128)
+def sound_words(lyrics):
+    """The consonants of each word, so the same lyrics match across scripts and spellings."""
+    found = set()
+    for raw in lyrics.splitlines():
+        line = re.sub(r"\[[^\]]*\]", "", raw).strip()
+        latin = (romanize(line) if not_latin(line) else line) or ""
+        for word in re.findall(r"[^\W\d_]+", unicodedata.normalize("NFD", latin.lower())):
+            bare = re.sub(r"[aeiouy\u0300-\u036f]", "", word)
+            bare = re.sub(r"(?<=[kgcjtdpbs])h", "", re.sub(r"(.)\1", r"\1", bare))
+            if len(bare) >= 2:
+                found.add(bare)
+    return frozenset(found)
+
+
+def same_lyrics(item, reference):
+    """False when two records are the same title sung in different languages."""
+    words = [sound_words(i.get("syncedLyrics") or i.get("plainLyrics") or "") for i in (item, reference)]
+    smaller = min(len(w) for w in words)
+    return smaller < 8 or len(words[0] & words[1]) / smaller >= 0.3
+
+
 def lookup_lrclib(track):
     """Returns the best LRCLIB record, or None. Raises on network failure."""
     titles, names = search_terms(track)
     pool = []
+    reference = None   # the record for this exact album and length settles which version it is
 
     if track["duration"] and not track["loose"]:
         direct = lrclib("get", {
@@ -578,9 +610,14 @@ def lookup_lrclib(track):
         })
         if direct:
             pool.append(direct)
+            if direct.get("syncedLyrics") or direct.get("plainLyrics"):
+                reference = direct
+
+    def acceptable(item):
+        return matches(item, track, titles, names) and timing_fits(item, track) and (not reference or same_lyrics(item, reference))
 
     def synced_match():
-        return any(i.get("syncedLyrics") and matches(i, track, titles, names) for i in pool)
+        return any(i.get("syncedLyrics") and acceptable(i) for i in pool)
 
     searches = []
     specific = names[1:3] if not track["loose"] and len(names) > 1 else names[:2]
@@ -596,9 +633,11 @@ def lookup_lrclib(track):
             break
         pool.extend(lrclib("search", params) or [])
 
-    accepted = [i for i in pool if matches(i, track, titles, names)]
-    usable = [i for i in accepted if i.get("syncedLyrics") or i.get("plainLyrics") or i.get("instrumental")]
+    usable = [i for i in pool if acceptable(i) and (i.get("syncedLyrics") or i.get("plainLyrics") or i.get("instrumental"))]
     return min(usable, key=lambda i: rank(i, track)) if usable else None
+
+
+LOOKUP_VERSION = 2   # songs saved by an earlier version of the matching rules are looked up again
 
 
 class LyricsStore:
@@ -618,8 +657,9 @@ class LyricsStore:
                 saved = CACHE / f"{key}.json"
                 if saved.exists():
                     entry = json.loads(saved.read_text("utf-8"))
-                    self.entries[key] = entry
-                    return entry
+                    if entry.get("lookup") == LOOKUP_VERSION:
+                        self.entries[key] = entry
+                        return entry
             entry = {"status": "loading"}
             self.entries[key] = entry
         threading.Thread(target=self._fetch, args=(key, track), daemon=True).start()
@@ -647,8 +687,13 @@ class LyricsStore:
             self._set(key, {"status": "none", "retry_at": time.time() + self.NONE_RETRY})
             return
 
+        entry["lookup"] = LOOKUP_VERSION
         CACHE.mkdir(exist_ok=True)
-        (CACHE / f"{key}.json").write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
+        saved = CACHE / f"{key}.json"
+        if saved.exists() and lyric_texts(json.loads(saved.read_text("utf-8"))) != lyric_texts(entry):
+            (CACHE / f"{key}.en.json").unlink(missing_ok=True)   # the old translation was of other words
+            translations.entries.pop(key, None)
+        saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
         self._set(key, entry)
 
     def _set(self, key, entry):

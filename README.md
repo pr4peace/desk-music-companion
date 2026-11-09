@@ -89,6 +89,7 @@ ollama pull qwen3.5:9b
 | `ios/` | The iPhone app. |
 | `assets/make_icons.swift` | Draws every icon from code. Run it from the project folder to regenerate them. |
 | `install.sh` | Mac setup. Safe to run again. |
+| `tools/check_sync.py` | Compares the lyric timing with the voice the Mac hears right now. Prints no lyrics. |
 
 After changing `index.html`, just reload the page. After changing `server.py`, choose **Restart Server** from the menu bar. Problems are logged to `~/Library/Logs/DeskLyrics.log`.
 
