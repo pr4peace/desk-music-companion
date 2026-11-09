@@ -799,8 +799,15 @@ def google_translate(lines):
         data=urllib.parse.urlencode({"q": "\n".join(lines)}).encode("utf-8"),
         headers={"User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
     )
-    with urllib.request.urlopen(request, timeout=15) as response:
-        data = json.load(response)
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                data = json.load(response)
+            break
+        except urllib.error.HTTPError as err:   # Google has brief hiccups: try again shortly
+            if err.code not in (429, 500, 502, 503, 504) or attempt == 2:
+                raise
+            time.sleep(2 + attempt * 3)
     text = "".join(segment[0] for segment in data[0] if segment[0])
     return [row.strip() for row in text.split("\n")], data[2]
 
@@ -888,7 +895,7 @@ def translate_lines(lines):
 
 
 class TranslationStore:
-    FAILED_RETRY = 300
+    FAILED_RETRY = 45
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -930,7 +937,7 @@ class TranslationStore:
 WIKIPEDIA = "https://en.wikipedia.org/w/api.php"
 OLLAMA = "http://127.0.0.1:11434"
 WRITERS = ("qwen3.8:27b", "qwen3.5:9b", "gemma4:e4b")   # the first of these that is installed writes
-TIDBIT_COUNT = 6
+TIDBIT_COUNT = 5
 SKIP_SECTIONS = ("cast", "track listing", "personnel", "see also", "references", "external links", "notes", "further reading", "filmography", "discography", "bibliography")
 MUSIC_WORDS = ("singer", "musician", "band", "composer", "rapper", "vocalist", "songwriter", "duo", "group", "producer", "playback")
 INTERESTING_WORDS = ("award", "won ", "first", "record", "inspired", "named", "famous", "originally", "debut", "nominated", "chart", "best", "reportedly", "banned", "only")
@@ -966,7 +973,27 @@ def tidy_article(text):
     for heading, body in zip(parts[1::2], parts[2::2]):
         if heading.strip().lower() not in SKIP_SECTIONS:
             kept.append(body)
-    return re.sub(r"\n+", " ", " ".join(kept)).strip()[:3000]
+    return re.sub(r"\n+", " ", " ".join(kept)).strip()
+
+
+def about_song(text, name, seen):
+    """Only the sentences about this song, and a following one that carries on about it.
+    Sentences already in the seen set are skipped, as film and soundtrack articles often repeat."""
+    wanted = f" {plain_words(name)} "
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'])", text)
+    keep = set()
+    for index, sentence in enumerate(sentences):
+        if wanted in f" {plain_words(sentence)} ":
+            keep.add(index)
+            if index + 1 < len(sentences) and re.match(r"(It|This|The song|The track|She|He|They)\b", sentences[index + 1]):
+                keep.add(index + 1)
+    fresh = []
+    for index in sorted(keep):
+        marker = plain_words(sentences[index])[:70]
+        if marker not in seen:
+            seen.add(marker)
+            fresh.append(sentences[index])
+    return " ".join(fresh)[:3000]
 
 
 def find_articles(query, title_fits, text_fits, want=1):
@@ -1002,6 +1029,13 @@ def grounded(text, notes):
     return all(name.lower() in lowered for name in re.findall(r"(?<=[a-z,;:'] )[A-Z][\w'-]+", text))
 
 
+def headline_is_grounded(headline, notes):
+    lowered = notes.lower()
+    if any(number.strip(".,") not in notes for number in re.findall(r"\d[\d,.]*", headline)):
+        return False
+    return all(word.lower() in lowered or reads_as_english(word) for word in re.findall(r"[A-Z][\w'-]+", headline))
+
+
 def choose_writer():
     try:
         with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=3) as response:
@@ -1011,18 +1045,39 @@ def choose_writer():
     return next((name for name in WRITERS if name in installed), None)
 
 
+def parse_tidbits(reply):
+    """Reads the model's JSON, whether it sends one object or several in a row."""
+    decoder = json.JSONDecoder()
+    items = []
+    at = reply.find("{")
+    while at != -1:
+        try:
+            value, end = decoder.raw_decode(reply, at)
+        except ValueError:
+            at = reply.find("{", at + 1)
+            continue
+        if isinstance(value, dict):
+            items.extend(value.get("tidbits", [value]))
+        at = reply.find("{", end)
+    return [item for item in items if isinstance(item, dict)]
+
+
 def ask_writer(model, sources, track):
     notes = "\n\n".join(f"[{title}]\n{text}" for title, text in sources)
     prompt = (
         f"Now playing: \"{track['name']}\" by {track['artist']}.\n\n{notes}\n\n"
-        f"Write {TIDBIT_COUNT} tidbits to show on screen while the song plays. Four are \"fact\": the most surprising, "
-        "specific things in the notes. Two are \"funny\": a deadpan aside that would make a friend laugh, taking one concrete "
-        "detail from the notes and teasing how absurd it is. A funny one must be a joke, not a summary. The style, from other subjects: "
+        f"Write up to {TIDBIT_COUNT} tidbits to show on screen while this song plays. Every one must be about this song itself: how it "
+        "was made, who sings it, what it means, where it appears, what happened to it. Ignore anything about the rest of the album, "
+        "film or career. Fewer is better than padding. Most are \"fact\": the most surprising, specific things in the notes. Include one "
+        "or two \"funny\" if the notes allow: a deadpan aside that would make a friend laugh, teasing one concrete detail. "
+        "A funny one must be a joke, not a summary. The style, from other subjects: "
         "\"Recorded in one take, mostly because the studio bill had already made everyone cry.\" and "
         "\"The band named itself after a typo, then spent forty years pretending it was deep.\" "
-        "Never joke about anyone's body, family, health or religion. Each is one plain sentence under 26 words. "
+        "Never joke about anyone's body, family, health or religion. "
+        "Give each a headline: a punchy hook of 2 to 5 words in sentence case that makes you want to read on, not a label. "
+        "The text is one plain sentence under 24 words that pays it off without repeating the headline. "
         "Reply with only JSON in this shape, nothing else: "
-        '{"tidbits": [{"kind": "fact or funny", "text": "...", "source": "the bracketed title it came from"}]}'
+        '{"tidbits": [{"kind": "fact or funny", "headline": "...", "text": "...", "source": "the bracketed title it came from"}]}'
     )
     body = json.dumps({
         "model": model, "stream": False, "think": False, "keep_alive": "30s",
@@ -1035,16 +1090,16 @@ def ask_writer(model, sources, track):
     request = urllib.request.Request(f"{OLLAMA}/api/chat", data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=150) as response:
         reply = json.load(response)["message"]["content"]
-    return json.loads(reply[reply.index("{"):reply.rindex("}") + 1])["tidbits"]
+    return parse_tidbits(reply)
 
 
 def sentences_as_tidbits(sources):
     """Used when no local model is available: the most interesting sentences, as written."""
     picks = []
     for title, text in sources:
-        sentences = [s.strip() for s in re.split(r"(?<=[a-z\)]\.)\s+(?=[A-Z])", text) if 50 <= len(s.strip()) <= 170 and s.count(",") <= 3]
+        sentences = [s.strip() for s in re.split(r"(?<=[a-z\)]\.)\s+(?=[A-Z])", text) if 50 <= len(s.strip()) <= 260 and s.count(",") <= 4]
         ranked = sorted(sentences, key=lambda s: -sum(word in s.lower() for word in INTERESTING_WORDS))
-        picks.extend({"kind": "fact", "text": s, "source": title} for s in ranked[:3])
+        picks.extend({"kind": "fact", "headline": "", "text": s, "source": title} for s in ranked[:3])
     return picks[:TIDBIT_COUNT]
 
 
@@ -1061,11 +1116,18 @@ def write_tidbits(sources, track):
         seen = set()
         for item in written:
             text = str(item.get("text", "")).strip()
+            headline = str(item.get("headline", "")).strip().rstrip(".")
+            if len(headline.split()) > 7 or not headline_is_grounded(headline, notes):
+                headline = ""
+            if headline:
+                headline = headline[0].upper() + headline[1:]
+            if re.search(r"\bnotes?\b|other tracks?", text, re.I):   # talking about its source, or about another song
+                continue
             if text and text not in seen and len(text.split()) <= 34 and grounded(text, notes):
                 seen.add(text)
-                items.append({"kind": "funny" if item.get("kind") == "funny" else "fact", "text": text, "source": item.get("source") if item.get("source") in titles else titles[0]})
-    if len(items) < 2:
-        items.extend(pick for pick in sentences_as_tidbits(sources) if pick["text"] not in {i["text"] for i in items})
+                items.append({"kind": "funny" if item.get("kind") == "funny" else "fact", "headline": headline, "text": text, "source": item.get("source") if item.get("source") in titles else titles[0]})
+    if not items:
+        items = sentences_as_tidbits(sources)
     facts = [i for i in items if i["kind"] == "fact"]
     funny = [i for i in items if i["kind"] == "funny"]
     mixed = []
@@ -1127,11 +1189,12 @@ class TidbitStore:
         artist_words = [word for word in plain_words(artist).split() if len(word) > 2]
         sources = []
 
-        sources += find_articles(
+        own_article = find_articles(
             f"{name} {artist} song",
             lambda title: base_title(title) == plain_words(name),
             lambda text: mentions_any(text, artist_words + plain_words(album).split()),
         )
+        sources += own_article
         if album and plain_words(album) != plain_words(name):
             self._progress(key, 1, f"Reading about {album}")
             song_words = [word for word in plain_words(name).split() if len(word) > 3]
@@ -1148,7 +1211,14 @@ class TidbitStore:
                 lambda title: plain_words(artist) in plain_words(title),
                 lambda text: mentions_any(text[:800], MUSIC_WORDS),
             )
-        unique = list(dict(sources).items())
+        # A song's own article is all about it. Elsewhere, only what ties back to the song counts.
+        own = dict(own_article)
+        unique = []
+        seen = set()
+        for title, text in dict(sources).items():
+            notes = text[:3000] if title in own else about_song(text, name, seen)
+            if len(notes) >= 40:
+                unique.append((title, notes))
         if not unique:
             return {"status": "none", "retry_at": time.time() + self.NOTHING_RETRY}
         self._progress(key, 3, "Picking the good bits")
@@ -1413,6 +1483,8 @@ class Handler(BaseHTTPRequestHandler):
             if lines:
                 result = translations.ensure(key, lines)
                 self.send_json({k: v for k, v in result.items() if k != "retry_at"})
+            elif not entry or entry.get("status") == "loading":   # lyrics are still on their way
+                self.send_json({"status": "loading"})
             else:
                 self.send_json({"status": "none"})
         elif url.path == "/api/tidbits":

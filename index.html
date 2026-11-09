@@ -16,6 +16,11 @@
     --text: #f6f4ef;
     --muted: rgba(246, 244, 239, .62);
     --accent: #f6c56f;
+    --glass: rgba(255, 255, 255, .1);
+    --drop: linear-gradient(180deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, .14));
+    --map: rgba(246, 244, 239, .46);
+    --panel: rgba(30, 28, 28, .52);
+    --well: rgba(255, 255, 255, .09);
     --line-idle: rgba(246, 244, 239, .26);
     --line-past: rgba(246, 244, 239, .14);
     --hair: rgba(246, 244, 239, .16);
@@ -47,7 +52,7 @@
     position: fixed; inset: 0;
     display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
     padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
-    gap: 14px; touch-action: manipulation;
+    gap: 14px; touch-action: manipulation; color: var(--text);
   }
   #now.split { grid-template-rows: auto minmax(0, 1fr) clamp(138px, 26vh, 220px) auto; }
   .vis-on #now { touch-action: none; }
@@ -55,6 +60,11 @@
   #art {
     width: 56px; height: 56px; flex: none; border-radius: 8px;
     background: rgba(255, 255, 255, .08) center / cover no-repeat;
+    transition: width .35s var(--ease), height .35s var(--ease), border-radius .35s var(--ease);
+  }
+  @media (orientation: portrait) {
+    #now[data-tab="lyrics"] #art { width: 78px; height: 78px; border-radius: 11px; }
+    #now[data-tab="lyrics"] #title { font-size: 20px; }
   }
   #song { min-width: 0; }
   #title, #artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -93,8 +103,9 @@
   /* Words fill in as they are sung. The padding keeps tall script marks inside the fill. */
   .word {
     display: inline-block; padding: .24em .05em; margin: -.24em -.05em;
-    transform-origin: 50% 100%; transition: color .12s linear;
+    transform-origin: 0% 100%; transition: color .12s linear;   /* swells away from the screen edge */
   }
+  .word:dir(rtl) { transform-origin: 100% 100%; }
   #lines, #gloss-roman { --unsung: rgba(246, 244, 239, .42); }
   #vis-line { --unsung: rgba(246, 244, 239, .6); }
   #lines li.current .original .word, #gloss-roman .word, #vis-line .word { color: var(--unsung); }
@@ -153,28 +164,66 @@
   .spin { width: 16px; height: 16px; flex: none; animation: spin .9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Each tidbit is a poster: a flood of the album's colour and one big line. */
+  #tb-flood { position: fixed; inset: 0; display: none; overflow: hidden; }
+  .tb-on #tb-flood { display: block; }
+  .tb-on #backdrop { visibility: hidden; }
+  .tb-layer { position: absolute; inset: 0; }
+  .tb-layer i { position: absolute; inset: -8%; background: center / cover no-repeat; opacity: .24; filter: blur(16px) saturate(1.3); will-change: transform; }
+  #now.on-light {
+    --text: #14110d; --muted: rgba(20, 17, 13, .68); --hair: rgba(20, 17, 13, .2); --map: rgba(20, 17, 13, .42);
+    --glass: rgba(20, 17, 13, .12); --drop: linear-gradient(180deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .3));
+    --panel: rgba(255, 255, 255, .46); --well: rgba(20, 17, 13, .1);
+  }
+  #title, #artist, #elapsed, #remain, #tabs button, #tb-source { transition: color .3s ease; }
+
   #tidbits { position: absolute; inset: 0; display: grid; align-content: center; gap: 18px; }
+  #tb-head {
+    font-size: clamp(46px, 13.6vw, 74px); font-weight: 820; line-height: 1; letter-spacing: -.035em;
+    transform-origin: left center; scale: calc(1 + var(--v, 0) * .018); margin-bottom: .24em; overflow-wrap: break-word;
+  }
+  #tb-head.tilt { rotate: -2.4deg; }
+  .tb-w { display: inline-block; overflow: hidden; vertical-align: top; padding: .06em .03em .16em; margin: -.06em -.03em -.16em; }
+  .tb-w b { display: inline-block; font-weight: inherit; }
   #tb-label { font-size: clamp(19px, 5.2vw, 26px); font-weight: 620; line-height: 1.25; color: var(--muted); margin-bottom: 12px; }
   #tb-track { display: block; height: 4px; border-radius: 4px; background: var(--hair); overflow: hidden; }
   #tb-fill { display: block; height: 100%; background: var(--text); transform-origin: left; transform: scaleX(0); transition: transform .2s linear; }
-  #tb-text { font-size: clamp(27px, 7.6vw, 46px); font-weight: 720; line-height: 1.18; letter-spacing: -.012em; text-wrap: pretty; }
-  #tb-text.funny { color: var(--accent); font-weight: 640; }
-  #tb-source { font-size: 14px; font-weight: 550; color: var(--muted); }
+  #tb-text { font-size: clamp(20px, 5.5vw, 30px); font-weight: 560; line-height: 1.28; text-wrap: pretty; margin-bottom: 18px; }
+  #tb-text:empty { display: none; }
+  #tb-source { font-size: 14px; font-weight: 550; color: var(--muted); margin-bottom: 12px; }
   #tb-dots { display: flex; gap: 6px; margin-top: 4px; }
   #tb-dots i { flex: 1; height: 3px; border-radius: 3px; background: var(--hair); overflow: hidden; }
   #tb-dots b { display: block; height: 100%; background: var(--text); transform-origin: left; transform: scaleX(0); }
   #tb-note { font-size: clamp(20px, 5.6vw, 28px); font-weight: 620; line-height: 1.28; color: var(--muted); }
 
-  #tabs { display: flex; flex: none; gap: 2px; padding: 2px; border-radius: 99px; background: rgba(255, 255, 255, .08); }
-  #tabs button {
-    height: 40px; padding: 0 12px; border: 0; border-radius: 99px; background: transparent;
-    color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  /* A pool of glass with one drop of light that flows to the chosen tab. */
+  #tabs {
+    position: relative; display: flex; flex: none; padding: 4px; border-radius: 99px;
+    background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 10px 26px rgba(0, 0, 0, .3);
   }
-  #tabs button[aria-selected="true"] { background: rgba(255, 255, 255, .16); color: var(--text); }
+  #tab-drop {
+    position: absolute; left: 0; top: 4px; bottom: 4px; width: 0; border-radius: 99px; transform-origin: 50% 50%;
+    background: var(--drop);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), inset 0 -1px 1px rgba(255, 255, 255, .14), 0 3px 10px rgba(0, 0, 0, .26);
+  }
+  #tabs button {
+    position: relative; flex: 1; height: 44px; padding: 0 14px; border: 0; border-radius: 99px; background: transparent;
+    color: var(--muted); font: inherit; font-size: 15px; font-weight: 620; cursor: pointer; transition: color .25s ease, scale .2s var(--ease);
+  }
+  #tabs button:active { scale: .95; }
+  #tabs button[aria-selected="true"] { color: var(--text); }
 
-  #foot { display: flex; align-items: center; gap: 12px; min-height: 16px; }
-  #bar { flex: 1; height: 3px; border-radius: 3px; background: var(--hair); overflow: hidden; }
-  #fill { display: block; height: 100%; width: 100%; background: var(--text); transform-origin: left; transform: scaleX(0); }
+  #foot { display: flex; flex-direction: column; gap: 10px; }
+  #time { display: flex; align-items: center; gap: 10px; }
+  #elapsed, #remain { flex: none; min-width: 38px; font-size: 13px; font-weight: 620; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #remain { text-align: right; }
+  /* A map of the song: brighter stretches are where the singing is. */
+  #bar { position: relative; flex: 1; height: 5px; border-radius: 5px; background: var(--hair); overflow: hidden; }
+  #map, #map i { position: absolute; top: 0; bottom: 0; }
+  #map { left: 0; right: 0; }
+  #map i { background: var(--map); }
+  #fill { position: absolute; inset: 0; background: var(--text); transform-origin: left; transform: scaleX(0); }
   #tag { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
 
   #idle {
@@ -196,26 +245,41 @@
     background: rgba(30, 30, 34, .94); color: var(--text); font-size: 14px; font-weight: 600;
   }
 
+  /* The controls rise out of the footer, in the same glass as the tabs. */
   #timing {
-    position: fixed; left: 50%; bottom: calc(var(--pad-bottom) + 56px); transform: translateX(-50%);
-    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; border-radius: 30px;
-    background: rgba(30, 30, 34, .94);
-    transition: opacity .25s ease;
+    position: fixed; left: var(--pad-x); right: var(--pad-x); bottom: calc(var(--pad-bottom) + 94px);
+    display: grid; gap: 12px; padding: 14px; border-radius: 32px; color: var(--text);
+    background: var(--panel); -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 18px 44px rgba(0, 0, 0, .36);
+    transform-origin: 50% 100%; transition: opacity .22s ease, transform .42s var(--ease);
   }
-  #timing.off { opacity: 0; pointer-events: none; }
+  #timing.off { opacity: 0; transform: translateY(14px) scale(.96); pointer-events: none; }
   #timing button {
-    width: 48px; height: 44px; border: 0; border-radius: 99px; background: transparent;
-    color: var(--text); font: inherit; font-size: 24px; font-weight: 500; cursor: pointer;
+    border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; display: grid; place-items: center;
+    border-radius: 99px; transition: scale .2s var(--ease), color .2s ease, background .2s ease;
   }
-  #timing button:active { background: rgba(255, 255, 255, .14); }
-  #timing .row { display: flex; align-items: center; gap: 2px; }
-  #timing .transport button { width: 76px; height: 54px; display: grid; place-items: center; }
-  #timing .transport svg { width: 28px; height: 28px; fill: currentColor; }
+  #timing button:active { scale: .9; }
+  #timing .transport { display: flex; align-items: center; justify-content: center; gap: 18px; }
+  #timing .transport button { width: 60px; height: 60px; }
+  #timing .transport svg { width: 30px; height: 30px; fill: currentColor; }
+  #timing #play {
+    width: 74px; height: 74px; background: var(--drop);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), inset 0 -1px 1px rgba(255, 255, 255, .14), 0 5px 14px rgba(0, 0, 0, .26);
+  }
+  #timing #play svg { width: 36px; height: 36px; }
   #play .pause-icon, #play.is-playing .play-icon { display: none; }
   #play.is-playing .pause-icon { display: block; }
-  #timing button.mode { font-size: 14px; font-weight: 650; }
-  #timing button.mode[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
-  #timing output { min-width: 112px; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #timing .settings { display: flex; align-items: center; gap: 8px; }
+  #timing .chips, #timing .nudge { display: flex; align-items: center; height: 48px; padding: 3px; border-radius: 99px; background: var(--well); }
+  #timing .chips { flex: none; gap: 2px; }
+  #timing .nudge { flex: 1; min-width: 0; }
+  #timing button.mode { width: 52px; height: 42px; font-size: 15px; font-weight: 680; }
+  #timing button.mode[aria-pressed="false"] { color: var(--muted); }
+  #timing button.mode[aria-pressed="true"] {
+    background: var(--drop); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 8px rgba(0, 0, 0, .22);
+  }
+  #timing .nudge button { flex: none; width: 42px; height: 42px; font-size: 24px; font-weight: 500; }
+  #timing output { flex: 1; min-width: 0; text-align: center; white-space: nowrap; font-size: 13px; font-weight: 620; font-variant-numeric: tabular-nums; color: var(--muted); }
 
   /* A phone lying sideways on the desk. */
   @media (orientation: landscape) and (max-height: 540px) {
@@ -227,7 +291,9 @@
     #title { font-size: 17px; }
     #artist { font-size: 14px; }
     #stage { grid-row: 1; grid-column: 2; }
-    #foot { grid-row: 2; grid-column: 1 / -1; }
+    #foot { grid-row: 2; grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 16px; }
+    #time { flex: 1; min-width: 0; }
+    #tabs button { flex: none; height: 40px; }
     #clock { font-size: clamp(90px, 42vmin, 190px); }
 
     /* Sideways there is width to spare but little height, so the same split runs left to right. */
@@ -238,14 +304,23 @@
       column-gap: 32px; row-gap: 8px;
     }
     #now.split #meta { grid-row: 1; grid-column: 2; flex-direction: row; align-items: center; justify-content: flex-start; }
-    #now.split #art { width: 44px; height: 44px; aspect-ratio: auto; border-radius: 7px; }
+    #now.split #art { width: 60px; height: 60px; aspect-ratio: auto; border-radius: 9px; }
     #now.split #song { width: auto; }
     #now.split #stage { grid-row: 1 / 3; grid-column: 1; }
     #now.split #gloss { grid-row: 2; grid-column: 2; border-top: 0; padding-top: 4px; justify-content: center; }
     #now.split #foot { grid-row: 3; grid-column: 1 / -1; }
     #gloss-roman { font-size: calc(var(--gs, 1) * clamp(21px, 3.3vw, 30px)); }
     #gloss-english { font-size: calc(var(--gs, 1) * clamp(17px, 2.5vw, 23px)); }
-    #tb-text { font-size: clamp(22px, 3.4vw, 32px); }
+    #tb-head { font-size: clamp(34px, 6.2vw, 56px); }
+    #timing {
+      left: 0; right: 0; bottom: calc(var(--pad-bottom) + 60px); width: fit-content; margin-inline: auto;
+      display: flex; align-items: center; gap: 18px; padding: 10px 14px; border-radius: 30px;
+    }
+    #timing .transport { gap: 8px; }
+    #timing .transport button { width: 52px; height: 52px; }
+    #timing #play { width: 62px; height: 62px; }
+    #timing .nudge { flex: none; width: 216px; }
+    #tb-text { font-size: clamp(18px, 2.7vw, 24px); margin-bottom: 10px; }
     #tidbits { gap: 10px; }
   }
 
@@ -253,12 +328,15 @@
     #lines, #stage.plain #lines, #idle { transition: none; }
     #lines li.gap.current { animation: none; }
     .spin { animation: breathe 1.6s ease-in-out infinite; }
+    #tb-head { scale: 1; }
+    #timing.off { transform: none; }
   }
 </style>
 </head>
 <body>
 <div id="backdrop"></div>
 <canvas id="vis" aria-hidden="true"></canvas>
+<div id="tb-flood" aria-hidden="true"></div>
 
 <main id="now" hidden>
   <header id="meta">
@@ -275,7 +353,7 @@
     <p id="vis-note" hidden></p>
     <div id="tidbits">
       <div id="tb-load"><p id="tb-label"></p><span id="tb-track"><span id="tb-fill"></span></span></div>
-      <div id="tb-show" hidden><p id="tb-text" dir="auto"></p><p id="tb-source"></p><div id="tb-dots"></div></div>
+      <div id="tb-show" hidden><h2 id="tb-head" dir="auto"></h2><p id="tb-text" dir="auto"></p><p id="tb-source"></p><div id="tb-dots"></div></div>
       <p id="tb-note" hidden></p>
     </div>
   </section>
@@ -284,18 +362,44 @@
     <p id="gloss-english" dir="auto"></p>
     <p id="gloss-wait" hidden>
       <svg class="spin" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="26 12"/></svg>
-      Translating…
+      <span id="gloss-wait-text">Translating…</span>
     </p>
   </section>
   <footer id="foot">
+    <div id="time" hidden>
+      <span id="elapsed"></span>
+      <div id="bar"><span id="map"></span><span id="fill"></span></div>
+      <span id="remain"></span>
+      <span id="tag" hidden></span>
+    </div>
     <nav id="tabs" role="tablist" aria-label="View">
+      <span id="tab-drop" aria-hidden="true"></span>
       <button id="tab-lyrics" role="tab" aria-selected="true">Lyrics</button>
       <button id="tab-vis" role="tab" aria-selected="false">Visualizer</button>
       <button id="tab-tidbits" role="tab" aria-selected="false">Tidbits</button>
     </nav>
-    <div id="bar"><span id="fill"></span></div>
-    <span id="tag" hidden></span>
   </footer>
+  <div id="timing" class="off">
+    <div class="transport">
+      <button id="previous" aria-label="Previous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2.5v14H6zM20 5v14L9.5 12z"/></svg></button>
+      <button id="play" aria-label="Play or pause">
+        <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15L20 12z"/></svg>
+        <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 5H10v14H6.5zM14 5h3.5v14H14z"/></svg>
+      </button>
+      <button id="next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5H18v14h-2.5zM4 5v14l10.5-7z"/></svg></button>
+    </div>
+    <div class="settings">
+      <div class="chips">
+      <button id="show-roman" class="mode" aria-label="Show transliteration" aria-pressed="true">Abc</button>
+      <button id="show-english" class="mode" aria-label="Show English translation" aria-pressed="true">EN</button>
+      </div>
+      <div class="nudge">
+      <button id="earlier" aria-label="Show lyrics earlier">−</button>
+      <output id="offset"></output>
+      <button id="later" aria-label="Show lyrics later">+</button>
+      </div>
+    </div>
+  </div>
 </main>
 
 <section id="idle">
@@ -306,23 +410,6 @@
 
 <div id="offline" hidden>Can't reach your Mac. Retrying.</div>
 
-<div id="timing" class="off">
-  <div class="row transport">
-    <button id="previous" aria-label="Previous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2.5v14H6zM20 5v14L9.5 12z"/></svg></button>
-    <button id="play" aria-label="Play or pause">
-      <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15L20 12z"/></svg>
-      <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 5H10v14H6.5zM14 5h3.5v14H14z"/></svg>
-    </button>
-    <button id="next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5H18v14h-2.5zM4 5v14l10.5-7z"/></svg></button>
-  </div>
-  <div class="row">
-    <button id="show-roman" class="mode" aria-label="Show transliteration" aria-pressed="true">Abc</button>
-    <button id="show-english" class="mode" aria-label="Show English translation" aria-pressed="true">EN</button>
-    <button id="earlier" aria-label="Show lyrics earlier">−</button>
-    <output id="offset"></output>
-    <button id="later" aria-label="Show lyrics later">+</button>
-  </div>
-</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -399,11 +486,33 @@ function showTab() {
   $('stage').classList.toggle('vis', activeTab === 'vis');
   $('stage').classList.toggle('tidbits', activeTab === 'tidbits');
   for (const name of ['lyrics', 'vis', 'tidbits']) $('tab-' + name).setAttribute('aria-selected', activeTab === name);
+  $('now').dataset.tab = activeTab;
+  placeDrop(true);
   syncSplit();
   syncLevels();
   if (activeTab === 'lyrics') placeActive(true);
   else if (activeTab === 'vis') fitVisLine();
   else loadTidbits();
+}
+
+let dropAt = null;
+
+// The drop stretches across the gap, thinning as it goes, then settles on the new tab.
+function placeDrop(animated) {
+  const on = $('tab-' + activeTab), drop = $('tab-drop');
+  const x = on.offsetLeft, w = on.offsetWidth;
+  if (!w) return;
+  drop.style.width = w + 'px';
+  drop.style.transform = `translateX(${x}px)`;
+  if (animated && dropAt && dropAt.x !== x && !calmMotion.matches) {
+    const left = Math.min(dropAt.x, x), span = Math.max(dropAt.x + dropAt.w, x + w) - left;
+    drop.animate([
+      { transform: `translateX(${dropAt.x}px)`, width: dropAt.w + 'px' },
+      { transform: `translateX(${left}px) scaleY(.78)`, width: span + 'px', offset: .42 },
+      { transform: `translateX(${x}px)`, width: w + 'px' },
+    ], { duration: 480, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+  }
+  dropAt = { x, w };
 }
 
 function setTab(name) {
@@ -418,6 +527,7 @@ const levelsWanted = () => onScreen() && (vis.playing || activeTab === 'vis');
 
 function syncLevels() {
   document.body.classList.toggle('vis-on', visWanted());
+  syncFlood();
   if (visWanted() && !scene.gl && !vis.noScene) startScene();
   const want = levelsWanted();
   if (want && !vis.source) {
@@ -482,6 +592,7 @@ function wordFrame(now) {
   const dt = Math.min(.1, (now - vis.wordsLast) / 1000);
   vis.wordsLast = now;
   updateVocal(dt);
+  if (activeTab === 'tidbits' && !calmMotion.matches) $('tb-head').style.setProperty('--v', vis.vocal.toFixed(2));
 
   const line = view.lines[view.active];
   if (!line || !line.text) { vis.sungIndex = view.active; return; }
@@ -994,7 +1105,7 @@ function screenPoint(event) {
 let press = null, lastTap = { at: -1e9, x: 0, y: 0 };
 
 function pointerDown(event) {
-  if (event.target.closest('#tabs')) return;
+  if (event.target.closest('#tabs, #timing')) return;
   press = { id: event.pointerId, x: event.clientX, y: event.clientY, at: event.timeStamp };
   if (activeTab !== 'vis') return;
   const [x, y] = screenPoint(event);
@@ -1138,11 +1249,15 @@ async function loadTranslation(key) {
     const res = await fetch('/api/translation?key=' + key, { cache: 'no-store' });
     const data = await res.json();
     if (view.key !== key) return;
-    setTranslating(data.status === 'loading');
+    $('gloss-wait-text').textContent = data.status === 'failed' ? 'Translation is taking a moment…' : 'Translating…';
+    setTranslating(data.status === 'loading' || data.status === 'failed');
     if (data.status === 'ready') { view.english = data.lines; applyExtras(); return; }
     if (data.status === 'none') return;
-    if (data.status === 'loading') wait = 1500;
-  } catch { setTranslating(false); }
+    wait = data.status === 'loading' ? 1500 : 15000;
+  } catch {
+    wait = 15000;
+    if (view.key === key) setTranslating(true);
+  }
   if (view.key === key) setTimeout(() => loadTranslation(key), wait);
 }
 
@@ -1182,6 +1297,12 @@ async function loadTidbits() {
   tidbit.timer = setTimeout(loadTidbits, wait);
 }
 
+function syncFlood() {
+  const on = activeTab === 'tidbits' && onScreen() && tidbit.status === 'ready' && tidbit.items.length > 0;
+  document.body.classList.toggle('tb-on', on);
+  $('now').classList.toggle('on-light', on && !!tidbit.light);
+}
+
 function paintTidbits() {
   const loading = tidbit.status === 'loading', ready = tidbit.status === 'ready' && tidbit.items.length > 0;
   $('tb-load').hidden = !loading;
@@ -1189,19 +1310,66 @@ function paintTidbits() {
   $('tb-note').hidden = loading || ready;
   if (loading) $('tb-label').textContent = tidbit.label;
   if (!loading && !ready) {
-    $('tb-note').textContent = tidbit.status === 'failed' ? "Couldn't look this one up. Trying again soon." : 'Nothing to share about this one yet.';
+    $('tb-note').textContent = tidbit.status === 'failed' ? "Couldn't look this one up. Trying again soon." : 'No stories about this song yet.';
   }
-  if (ready && !$('tb-text').textContent) showTidbit(0);
-  if (!ready) { $('tb-text').textContent = ''; $('tb-dots').textContent = ''; }
+  if (ready && !$('tb-head').textContent) showTidbit(0);
+  if (!ready) { $('tb-head').textContent = ''; $('tb-text').textContent = ''; $('tb-dots').textContent = ''; $('tb-flood').textContent = ''; }
+  syncFlood();
+}
+
+const lightness = ([r, g, b]) => {
+  const linear = v => (v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+  return .2126 * linear(r) + .7152 * linear(g) + .0722 * linear(b);
+};
+const cssColor = rgb => `rgb(${rgb.map(v => Math.round(v * 255)).join(' ')})`;
+
+function floodTo(colour) {
+  const flood = $('tb-flood'), layer = document.createElement('div');
+  layer.className = 'tb-layer';
+  layer.style.background = cssColor(colour);
+  if (view.art) {
+    const picture = document.createElement('i');
+    picture.style.backgroundImage = `url("/art?id=${view.art}")`;
+    layer.append(picture);
+    if (!calmMotion.matches) picture.animate({ transform: ['scale(1.16)', 'scale(1)'] }, { duration: tidbit.dwell * 1000, easing: 'linear', fill: 'forwards' });
+  }
+  flood.append(layer);
+  const reveal = calmMotion.matches ? { opacity: [0, 1] } : { clipPath: ['circle(0% at 14% 86%)', 'circle(150% at 14% 86%)'] };
+  layer.animate(reveal, { duration: 640, easing: 'cubic-bezier(.16, 1, .3, 1)' }).onfinish = () => {
+    while (layer.previousSibling) layer.previousSibling.remove();
+  };
+}
+
+function setHeadline(element, text) {
+  element.textContent = '';
+  text.split(/\s+/).forEach((part, i) => {
+    const mask = document.createElement('span'), word = document.createElement('b');
+    mask.className = 'tb-w';
+    word.textContent = part;
+    mask.append(word);
+    element.append(mask, ' ');
+    if (!calmMotion.matches) {
+      word.animate({ transform: ['translateY(115%)', 'none'] }, { duration: 620, delay: 90 + i * 60, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'backwards' });
+    }
+  });
 }
 
 function showTidbit(index) {
-  const item = tidbit.items[index], text = $('tb-text');
+  const item = tidbit.items[index], head = $('tb-head'), text = $('tb-text');
+  const { voice, music } = palette.goal;
+  const funny = item.kind === 'funny', second = index % 2 === 1;
+  const ground = funny ? voice : music.map(v => v * (second ? .62 : .2));
   tidbit.index = index;
   tidbit.shown = 0;
-  tidbit.dwell = Math.max(7, 4 + item.text.split(/\s+/).length * .34);
-  text.textContent = item.text;
-  text.className = item.kind === 'funny' ? 'funny' : '';
+  tidbit.dwell = Math.max(8, 5 + (item.headline + ' ' + item.text).split(/\s+/).length * .34);
+  tidbit.light = lightness(ground) > .22;
+  floodTo(ground);
+  syncFlood();
+
+  setHeadline(head, item.headline || item.text);
+  head.classList.toggle('tilt', funny);
+  head.style.color = !funny && !second && !tidbit.light ? cssColor(voice) : '';
+  text.textContent = item.headline ? item.text : '';
   $('tb-source').textContent = 'From Wikipedia: ' + item.source;
   $('tb-dots').textContent = '';
   for (let i = 0; i < tidbit.items.length; i++) {
@@ -1210,14 +1378,15 @@ function showTidbit(index) {
     dot.append(bar);
     $('tb-dots').append(dot);
   }
-  text.style.fontSize = '';
-  let size = parseFloat(getComputedStyle(text).fontSize);
-  while (size > 18 && text.offsetHeight > $('stage').clientHeight * .72) {
+
+  head.style.fontSize = '';
+  let size = parseFloat(getComputedStyle(head).fontSize);
+  while (size > 24 && ($('tb-show').offsetHeight > $('stage').clientHeight * .96 || head.scrollWidth > head.clientWidth + 1)) {
     size -= 2;
-    text.style.fontSize = size + 'px';
+    head.style.fontSize = size + 'px';
   }
-  if (!calmMotion.matches) {
-    $('tb-show').animate({ opacity: [0, 1], transform: ['translateY(10px)', 'none'] }, { duration: 420, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+  if (!calmMotion.matches && item.headline) {
+    text.animate({ opacity: [0, 1], transform: ['translateY(12px)', 'none'] }, { duration: 460, delay: 320, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'backwards' });
   }
 }
 
@@ -1324,10 +1493,43 @@ function showVisLine() {
   }
 }
 
+const clockText = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+
+function drawSongMap() {
+  const map = $('map');
+  map.textContent = '';
+  const lines = view.lines.filter(line => line.text);
+  const blocks = [];
+  lines.forEach((line, i) => {
+    const next = lines[i + 1];
+    const end = Math.min(next ? next.t : line.t + 5, line.t + 6);
+    const last = blocks[blocks.length - 1];
+    if (last && line.t - last.end < 2.5) last.end = end;
+    else blocks.push({ start: line.t, end });
+  });
+  for (const block of blocks) {
+    const stretch = document.createElement('i');
+    stretch.style.left = Math.min(100, block.start / duration * 100) + '%';
+    stretch.style.width = Math.max(0, (Math.min(duration, block.end) - block.start) / duration * 100) + '%';
+    map.append(stretch);
+  }
+}
+
 function tick() {
   const t = Math.max(0, position());
   tickTidbits();
-  if (duration) $('fill').style.transform = `scaleX(${Math.min(1, t / duration)})`;
+  $('time').hidden = !duration;
+  if (duration) {
+    $('fill').style.transform = `scaleX(${Math.min(1, t / duration)})`;
+    const second = Math.floor(t);
+    if (second !== view.second) {
+      view.second = second;
+      $('elapsed').textContent = clockText(Math.min(t, duration));
+      $('remain').textContent = '−' + clockText(Math.max(0, duration - t));
+    }
+    const mapKey = `${view.key}:${view.lines.length}:${Math.round(duration)}`;
+    if (mapKey !== view.mapKey) { view.mapKey = mapKey; drawSongMap(); }
+  }
 
   if (view.lines.length) {
     const next = currentIndex(t + view.offset);
@@ -1382,7 +1584,8 @@ function showTrack(state) {
     $('artist').textContent = track.artist;
     clearLyrics();
     showOffset();
-    $('tb-text').textContent = '';
+    $('tb-head').textContent = '';
+    $('tb-flood').textContent = '';
     loadTidbits();
   }
   const art = state.art || null;
@@ -1501,6 +1704,7 @@ $('next').onclick = () => sendControl('next');
 $('tab-lyrics').onclick = () => setTab('lyrics');
 $('tab-vis').onclick = () => setTab('vis');
 $('tab-tidbits').onclick = () => setTab('tidbits');
+new ResizeObserver(() => placeDrop(false)).observe($('tabs'));
 document.addEventListener('visibilitychange', syncLevels);
 new ResizeObserver(sizeVis).observe($('vis'));
 $('show-roman').onclick = () => toggleExtra('roman');
