@@ -25,9 +25,24 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 
 ### A few ways to use it
 
-**Sing along to a song in a language you can't read.** A Hindi or Tamil song plays, and you can't read the script. Turn on **In English letters** and sing from the line under the lyrics. Pick **Meaning: Natural** to see what it means, written the way a person would say it, or **Literal** for word for word.
+**Sing along to a song in a language you can't read.** A Hindi or Tamil song plays, and you can't read the script. Turn on **In English letters** and sing from the line under the lyrics. Pick **English: Natural** to see what it means, written the way a person would say it, or **Literal** for word for word.
 
 **Learn a language through its songs.** Keep all three on: the script above, how it sounds below, and what it means under that. Line by line you start to match the letters to the sounds and the sounds to the words.
+
+**Catch what a translation can't carry.** With **What it means** on, lines that hold more than their words get a short note under the English: the idiom, what a metaphor stands for, a cultural or religious reference, a double meaning, or how a line answers an earlier one. The Mac writes the notes with the whole song in view, and plain lines get none. A ring under the lyric fills as the translation and notes are written.
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/meaning.jpg" alt="Lyrics tab: under the English translation, a note explaining that a mridang keeps rhythm, so the heart becoming one means joy has a steady beat"></td>
+    <td width="33%"><img src="docs/screenshots/diyas.jpg" alt="Visualizer, Diyas style: rows of clay oil lamps, every lamp lit and one burning tall, with the sung line below"></td>
+    <td width="33%"><img src="docs/screenshots/vinyl.jpg" alt="Visualizer, Vinyl style: the album cover as a spinning record's label, the sung word curving round it, and a tone arm"></td>
+  </tr>
+  <tr>
+    <td><b>What it means.</b> A note on the line, from the song as a whole.</td>
+    <td><b>Diyas.</b> A lamp lights for each new line and stays lit, so the song fills the screen with light. A chorus makes them all flare.</td>
+    <td><b>Vinyl.</b> The cover spins as the label, the grooves light with the music, and the tone arm moves in as the song plays.</td>
+  </tr>
+</table>
 
 **Something good to look at while you work.** Switch to the Visualizer and leave it be. After a few seconds without a touch the tabs fade away and the title dims, so only the music and the words are lit.
 
@@ -52,7 +67,7 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 
 <table>
   <tr>
-    <td width="33%"><img src="docs/screenshots/controls.jpg" alt="The controls: play and skip buttons, In English letters On and Off, Meaning Off, Literal and Natural, and the timing nudge"></td>
+    <td width="33%"><img src="docs/screenshots/controls.jpg" alt="The controls: play and skip buttons, In English letters On and Off, English Off, Literal and Natural, What it means On and Off, and the timing nudge"></td>
     <td width="33%"><img src="docs/screenshots/hint.jpg" alt="A glass hint above the tabs reading Double-tap for controls"></td>
     <td width="33%"><img src="docs/screenshots/tidbits.jpg" alt="Tidbits: a dark poster card about the mridang"></td>
   </tr>
@@ -72,7 +87,7 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 | Tab | What it shows |
 |---|---|
 | **Lyrics** | The words scroll above; the current line's transliteration and English stay put below. In landscape the two sit side by side. English can be word for word or written for meaning. |
-| **Visualizer** | Three styles; swipe sideways to switch. **Rings**: a full-screen picture in the album's colours, where the sung words give off light, a ring reacts to the music, and touch ripples and stirs it. **Kolam**: each verse draws its own South Indian kolam around a grid of dots, with beats rippling through the dots and light racing along the lines. **Words**: no lines of text, just each sung word landing big and then settling somewhere on the screen, so the song builds up into a poster of itself. Kolam patterns vary in shape, size, line and dot style, and are drawn fresh each time a song plays. |
+| **Visualizer** | Five styles; swipe sideways to switch, and the row goes round. **Rings**: a full-screen picture in the album's colours, where the sung words give off light, a ring reacts to the music, and touch ripples and stirs it. **Kolam**: each verse draws its own South Indian kolam around a grid of dots, with beats rippling through the dots and light racing along the lines. **Words**: no lines of text, just each sung word landing big and then settling somewhere on the screen, so the song builds up into a poster of itself. Kolam patterns vary in shape, size, line and dot style, and are drawn fresh each time a song plays. **Diyas**: a clay oil lamp lights for each new line and stays lit, the line being sung burns tallest, and a returning chorus makes them all flare. **Vinyl**: the album cover spins as a record's label, the grooves light up with the music, the sung word circles the label, and the tone arm moves in across the record as the song plays. |
 | **Tidbits** | Full-screen poster cards in the album's colours with facts and a few jokes about this song, from Wikipedia. They're researched in the background once a song has played about 20 seconds, so they're usually ready when you open the tab. |
 
 ## How to use
@@ -82,11 +97,11 @@ Leave the phone on the desk with the app open and play music on the Mac. Everyth
 - **Switch views** with the tabs at the bottom: Lyrics, Visualizer and Tidbits.
 - **Double-tap anywhere for controls.** Tap anywhere outside them, or double-tap again, to put them away; they also go on their own after a few seconds. They only show what applies to the tab you're on:
   - **Every tab:** previous, play/pause, next.
-  - **Lyrics:** **In English letters** turns the transliteration on or off. **Meaning** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). The first time Natural runs on a song it takes 20 to 50 seconds, and the literal English shows until it's ready. **− / +** moves the lyrics a quarter second earlier or later if they drift, and the label says where they are; tap it to put them back on time. It's remembered for that song.
+  - **Lyrics:** **In English letters** turns the transliteration on or off. **English** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). **What it means** adds a short note under lines whose meaning needs more than a translation. The first time Natural and the notes run on a song they take 20 to 50 seconds each, with a filling ring under the lyric to show how far along they are; the literal English shows meanwhile. **− / +** moves the lyrics a quarter second earlier or later if they drift, and the label says where they are; tap it to put them back on time. It's remembered for that song.
   - **Visualizer:** playback, and the timing nudge for the sung line.
 - **With VoiceOver,** double-tap belongs to VoiceOver, so swipe to the **Show controls** button just after the song title instead. With a keyboard, Tab gets you there and Escape closes the controls.
 - **Left alone,** after 8 seconds the tabs and progress bar fade and the title dims. Any touch, a new song or a pause brings them back.
-- **Visualizer styles:** swipe sideways to switch between **Rings**, **Kolam** and **Words**. The glass pill at the top shows which one is on, and its drop follows your finger as you swipe; you can tap its labels too. In Rings, touching the screen ripples and stirs the picture. In Kolam, it lights up the dots under your finger.
+- **Visualizer styles:** swipe sideways to switch between **Rings**, **Kolam**, **Words**, **Diyas** and **Vinyl**. The glass pill at the top shows the one that's on with its neighbours either side, and slides along as you swipe; past the last style it comes back round to the first. You can tap the neighbours too. In Rings, touching the screen ripples and stirs the picture. In Kolam, it lights up the dots under your finger.
 - **Progress bar:** the brighter stretches are where the singing is, with elapsed and remaining time on either side.
 - **Tidbits:** they're researched in the background about 20 seconds into each song. If you open the tab sooner, a loading bar shows the progress. Cards rotate on their own; swipe sideways to flip through them.
 - **Mac menu bar:** the ring icon shows what's playing and the phone's address, and can start, stop or restart the server.

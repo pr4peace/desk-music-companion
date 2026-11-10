@@ -23,15 +23,15 @@ What's being worked on, what's next, and good things to pick up. If you take som
 
 ## Visualizer ideas
 
-The Visualizer has Rings, Kolam and Words. Candidates for more, all in the album's colours:
+The Visualizer has Rings, Kolam, Words, Diyas and Vinyl. Candidates for more, all in the album's colours:
 
+- **Meaning, big.** The Natural English of each line fills the screen as it's sung, with the original small beneath it.
+- **A picture per line.** Each line's meaning becomes an image behind the words, made ahead on the Mac by a local image model, like tidbits are.
 - **Album mosaic.** The cover breaks into tiles that lift and ripple with the beat, then snap back into the whole cover on big moments.
 - **Ridgelines.** The sound as rolling hills scrolling toward you, one ridge per moment, with the line floating above the horizon.
 - **Constellation.** Each sung word leaves a star, so by the end the whole song hangs there as a sky.
 - **Rain on glass.** The cover blurred behind wet glass; beats drop rain and the singing wipes a clear streak.
 - **Rangoli bloom.** A radial, eight-way symmetric flower that opens a ring of petals on each beat and closes between verses.
-- **Diyas.** A row of oil lamps, one lit per line sung, their flames flickering with the voice; the chorus lights them all.
-- **Vinyl.** The cover spins as a record, the grooves light up with the music, and the sung word orbits the label.
 - **Ink.** The waveform drawn as brush strokes that bleed and dry, like calligraphy on paper.
 - **Garden.** Each line grows a plant; by the end of the song it's a garden, a different one every play.
 - **Duets in two colours.** Tell the two voices apart by pitch and colour each singer's lines differently, in any style.

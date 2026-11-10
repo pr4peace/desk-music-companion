@@ -143,23 +143,31 @@
   body.vis-on.paper-on #vis { display: none; }
   body.vis-on.paper-on #backdrop { visibility: hidden; }
   /* Below the pattern, at the lower right, like the caption under a drawing. */
-  #stage.vis.kolam #vis-lyric { top: 63%; place-items: end end; padding-bottom: 54px; }   /* clear of the hint above the tabs */
-  #stage.vis.kolam #vis-line { text-align: right; }
+  #stage.vis.lower #vis-lyric { top: 63%; place-items: end end; padding-bottom: 54px; }   /* clear of the hint above the tabs */
+  #stage.vis.lower #vis-line { text-align: right; }
   #stage.words #vis-line { visibility: hidden; }   /* it still tracks the sung word, unseen */
   /* Which visual is showing, and that a sideways swipe changes it: the same glass and drop as the tabs. */
   #vis-pager {
     position: absolute; left: 50%; top: 2px; translate: -50% 0; display: flex; padding: 3px; border-radius: 99px;
     background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 8px 20px rgba(0, 0, 0, .26);
-    opacity: .5; transition: opacity .45s ease;
+    opacity: .5; transition: opacity .45s ease; --item: 70px;
   }
   #vis-pager.awake { opacity: 1; }
+  /* Three styles show at a time: the one on, with its neighbours fading off either side. The row
+     goes round, so a swipe past the last style comes back to the first. */
+  #vis-pager .window {
+    position: relative; width: calc(var(--item) * 3); overflow-x: clip;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 28%, #000 72%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 28%, #000 72%, transparent);
+  }
+  #vis-pager .track { display: flex; width: max-content; will-change: transform; }
   #vis-pager .drop {
     position: absolute; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 99px; background: var(--drop);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 2px 8px rgba(0, 0, 0, .24);
   }
   #vis-pager button {
-    position: relative; height: 32px; padding: 0 14px; border: 0; border-radius: 99px; background: transparent;
+    position: relative; flex: none; width: var(--item); height: 32px; padding: 0; border: 0; border-radius: 99px; background: transparent;
     color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; transition: color .25s ease;
   }
   #vis-pager button[aria-selected="true"] { color: var(--text); }
@@ -190,9 +198,21 @@
   #gloss-roman { font-size: calc(var(--gs, 1) * clamp(21px, 5.8vw, 31px)); font-weight: 600; line-height: 1.2; letter-spacing: -.005em; }
   #gloss-english { font-size: calc(var(--gs, 1) * clamp(18px, 5vw, 26px)); font-weight: 460; line-height: 1.32; color: rgba(246, 244, 239, .82); }
   #gloss-roman:empty, #gloss-english:empty { display: none; }
-  #gloss-wait { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--muted); }
-  .spin { width: 16px; height: 16px; flex: none; animation: spin .9s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* What a line means in the song as a whole: an aside, quieter than the translation above it. */
+  #gloss-context {
+    font-size: calc(var(--gs, 1) * clamp(15px, 4.1vw, 19px)); font-weight: 450; line-height: 1.4; color: var(--muted);
+    padding-left: 12px; border-left: 2px solid var(--hair);
+  }
+  #gloss-context:empty { display: none; }
+  #gloss-wait { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; color: var(--muted); }
+  /* Progress that fills as the work gets done, rather than a spinner that only says "busy". */
+  .ring { width: 20px; height: 20px; flex: none; rotate: -90deg; }
+  .ring circle { fill: none; stroke-width: 2.6; }
+  .ring .track { stroke: var(--hair); }
+  .ring .arc {
+    stroke: var(--text); stroke-linecap: round; stroke-dasharray: 100;
+    stroke-dashoffset: calc(100 - var(--p, 0) * 100); transition: stroke-dashoffset .7s var(--ease);
+  }
 
   /* Each tidbit is a poster: a flood of the album's colour and one big line. */
   #tb-flood { position: fixed; inset: 0; display: none; overflow: hidden; }
@@ -379,9 +399,14 @@
     #now.split #foot { grid-row: 3; grid-column: 1 / -1; }
     #gloss-roman { font-size: calc(var(--gs, 1) * clamp(19px, 3vw, 27px)); }
     #gloss-english { font-size: calc(var(--gs, 1) * clamp(17px, 2.5vw, 23px)); }
+    #gloss-context { font-size: calc(var(--gs, 1) * clamp(14px, 2vw, 18px)); }
+    /* Three settings rows have to fit beside the lyric, so the panel packs tighter sideways. */
+    #timing .seg, #timing .nudge { height: 46px; padding: 1px 3px; }
+    #timing { gap: 6px; }
+    #timing .transport button { width: 46px; height: 46px; }
     #tb-head { font-size: clamp(34px, 6.2vw, 56px); }
-    #stage.vis.kolam #vis-lyric, #stage.vis.words #vis-lyric { top: 44px; left: 52%; place-items: center; padding-bottom: 0; }
-    #stage.vis.kolam #vis-line { text-align: center; }
+    #stage.vis.lower #vis-lyric, #stage.vis.words #vis-lyric { top: 44px; left: 52%; place-items: center; padding-bottom: 0; }
+    #stage.vis.lower #vis-line { text-align: center; }
     /* Sideways the controls stand over the side column, never across the line being sung. */
     #timing { left: var(--pad-x); right: auto; bottom: calc(var(--pad-bottom) + 62px); width: min(380px, 46vw); gap: 10px; padding: 12px; border-radius: 28px; }
     #now.split #timing { left: auto; right: var(--pad-x); }
@@ -396,7 +421,7 @@
   @media (prefers-reduced-motion: reduce) {
     #lines, #stage.plain #lines, #idle { transition: none; }
     #lines li.gap.current { animation: none; }
-    .spin { animation: breathe 1.6s ease-in-out infinite; }
+    .ring .arc { transition: none; }
     #tb-head { scale: 1; }
     #timing.off { transform: none; }
   }
@@ -424,9 +449,7 @@
     <p id="vis-note" hidden></p>
     <div id="vis-pager" role="tablist" aria-label="Visual style">
       <span class="drop" aria-hidden="true"></span>
-      <button data-style="rings" role="tab" aria-selected="true">Rings</button>
-      <button data-style="kolam" role="tab" aria-selected="false">Kolam</button>
-      <button data-style="words" role="tab" aria-selected="false">Words</button>
+      <div class="window"><div class="track"></div></div>
     </div>
     <div id="tidbits">
       <div id="tb-load"><p id="tb-label"></p><span id="tb-track"><span id="tb-fill"></span></span></div>
@@ -437,8 +460,9 @@
   <section id="gloss" hidden>
     <p id="gloss-roman" dir="auto"></p>
     <p id="gloss-english" dir="auto"></p>
-    <p id="gloss-wait" hidden>
-      <svg class="spin" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="26 12"/></svg>
+    <p id="gloss-context" lang="en"></p>
+    <p id="gloss-wait" role="progressbar" aria-valuemin="0" aria-valuemax="100" hidden>
+      <svg class="ring" viewBox="0 0 20 20" aria-hidden="true"><circle class="track" cx="10" cy="10" r="8"/><circle class="arc" cx="10" cy="10" r="8" pathLength="100"/></svg>
       <span id="gloss-wait-text">Translating…</span>
     </p>
   </section>
@@ -473,11 +497,17 @@
         <button data-roman="off" role="radio" aria-checked="false">Off</button>
       </div>
       <div class="seg english" role="radiogroup" aria-labelledby="english-label">
-        <span class="caption" id="english-label">Meaning</span>
+        <span class="caption" id="english-label">English</span>
         <span class="drop" aria-hidden="true"></span>
         <button data-english="off" role="radio" aria-checked="false">Off</button>
         <button data-english="literal" role="radio" aria-checked="true">Literal</button>
         <button data-english="natural" role="radio" aria-checked="false">Natural</button>
+      </div>
+      <div class="seg context" role="radiogroup" aria-labelledby="context-label">
+        <span class="caption" id="context-label">What it means</span>
+        <span class="drop" aria-hidden="true"></span>
+        <button data-context="on" role="radio" aria-checked="true">On</button>
+        <button data-context="off" role="radio" aria-checked="false">Off</button>
       </div>
     </div>
     <div class="nudge">
@@ -518,7 +548,8 @@ function rest() {
 }
 const STEP = 0.25;
 
-const view = { key: null, status: null, lines: [], plain: false, offset: 0, active: -2, plainY: null, art: null, roman: {}, english: {}, natural: {}, translating: false, naturalizing: false, hasExtras: false };
+const view = { key: null, status: null, lines: [], plain: false, offset: 0, active: -2, plainY: null, art: null, roman: {}, english: {}, natural: {}, context: {}, translating: false, naturalizing: false, explaining: false, hasExtras: false,
+  wait: { literal: null, natural: null, context: null } };
 const clock = { pos: 0, at: performance.now(), running: false };
 let duration = 0, pausedSince = null, failures = 0, timingTimer = null;
 
@@ -556,6 +587,7 @@ const extras = {
   roman: store(s => s.getItem('show:roman')) !== '0',
   english: store(s => s.getItem('show:english')) !== '0',
   natural: store(s => s.getItem('show:natural')) === '1',
+  context: store(s => s.getItem('show:context')) !== '0',
 };
 let activeTab = ['vis', 'tidbits'].includes(store(s => s.getItem('tab'))) ? store(s => s.getItem('tab')) : 'lyrics';
 const vis = {
@@ -598,7 +630,10 @@ function clearLyrics() {
   view.roman = {};
   view.english = {};
   view.natural = {};
+  view.context = {};
   view.naturalizing = false;
+  view.explaining = false;
+  view.wait = { literal: null, natural: null, context: null };
   view.translating = false;
   view.hasExtras = false;
   view.lines = [];
@@ -1267,10 +1302,11 @@ function pointerEnd(event) {
   if (event.type !== 'pointerup' || !press || press.id !== event.pointerId) return;
   const sideways = event.clientX - press.x, upright = event.clientY - press.y;
   if (activeTab === 'vis' && press.dragged) {
-    const next = VIS_STYLES[VIS_STYLES.indexOf(visStyle) + (sideways < 0 ? 1 : -1)];
+    const count = VIS_STYLES.length;
+    const next = VIS_STYLES[(VIS_STYLES.indexOf(visStyle) + (sideways < 0 ? 1 : count - 1)) % count];   // the row goes round
     press = null;
-    if (Math.abs(sideways) > 60 && Math.abs(upright) < 80 && next) setVisStyle(next);
-    else placePager(true);   // not far enough, or nothing that way: the drop springs back
+    if (Math.abs(sideways) > 60 && Math.abs(upright) < 80) setVisStyle(next);
+    else placePager(true);   // not far enough: the row springs back
     return;
   }
   if (activeTab === 'tidbits' && Math.abs(sideways) > 60 && Math.abs(upright) < 80 && tidbit.status === 'ready' && tidbit.items.length > 1) {
@@ -1316,7 +1352,9 @@ function blendPalette(dt) {
 // The patterns drawn at South Indian doorsteps: lines looping around a grid of dots, with
 // four-way symmetry. Each verse gets its own pattern, drawn while it is sung.
 
-let visStyle = ['kolam', 'words'].includes(store(s => s.getItem('vis:style'))) ? store(s => s.getItem('vis:style')) : 'rings';
+const VIS_STYLES = ['rings', 'kolam', 'words', 'diyas', 'vinyl'];
+const VIS_NAMES = { rings: 'Rings', kolam: 'Kolam', words: 'Words', diyas: 'Diyas', vinyl: 'Vinyl' };
+let visStyle = VIS_STYLES.includes(store(s => s.getItem('vis:style'))) ? store(s => s.getItem('vis:style')) : 'rings';
 const kolam = { key: null, cache: new Map(), groups: [], groupsKey: '', shown: -1, current: null, previous: null, fade: 0, waves: [], lastBeat: 0 };
 
 function seeded(text) {
@@ -1693,6 +1731,237 @@ function drawWords() {
   }
 }
 
+// --- Shared by the paper styles ---------------------------------------------------
+
+function paperCanvas() {
+  const canvas = $('kolam'), scale = Math.min(2, devicePixelRatio || 1);
+  const W = Math.round(canvas.clientWidth * scale), H = Math.round(canvas.clientHeight * scale);
+  if (!W || !H) return null;
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+  const c = canvas.getContext('2d');
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalAlpha = 1;
+  c.shadowBlur = 0;
+  c.globalCompositeOperation = 'source-over';
+  const ground = c.createRadialGradient(W / 2, H * .42, 0, W / 2, H * .42, Math.max(W, H) * .8);
+  ground.addColorStop(0, cssColor(palette.deep.map(v => Math.min(1, v * 2.2))));
+  ground.addColorStop(1, cssColor(palette.deep.map(v => v * .55)));
+  c.fillStyle = ground;
+  c.fillRect(0, 0, W, H);
+  return { c, W, H, scale };
+}
+
+// The square the picture sits in: above the lyric upright, beside it sideways (as for Kolam).
+function patternBox(scale) {
+  const stage = stageBox(), portrait = innerHeight >= innerWidth;
+  const side = (portrait ? Math.min(stage.width * .94, stage.height * .63 - 52) : Math.min(stage.height - 52, stage.width * .48)) * scale;
+  const left = portrait ? (stage.left + stage.width / 2) * scale - side / 2 : stage.left * scale;
+  const top = portrait ? (stage.top + 46) * scale : (stage.top + 46 + (stage.height - 46) / 2) * scale - side / 2;
+  return { left, top, side };
+}
+
+const rgba = (colour, alpha) => `rgb(${colour.map(v => Math.round(v * 255)).join(' ')} / ${alpha})`;
+
+// --- Diyas: one oil lamp for each line of the song ---------------------------------
+// A lamp lights the first time its line is sung and stays lit, so the song fills the
+// row with light. The line being sung burns tallest; a line coming back, like a
+// chorus, makes every lit lamp flare.
+
+const diya = { key: null, lamps: [], lampOf: new Map(), count: 0 };
+
+function diyaLamps() {
+  const key = `${view.key}:${view.lines.length}`;
+  if (diya.key === key) return diya;
+  const firsts = new Map();
+  for (const line of view.lines) {
+    const text = (line.text || '').trim();
+    if (text && !firsts.has(text)) firsts.set(text, line.t);
+  }
+  const count = Math.max(8, Math.min(30, firsts.size));
+  const lamps = Array.from({ length: count }, () => ({ at: Infinity }));
+  diya.lampOf = new Map();
+  [...firsts].forEach(([text, at], i) => {
+    const lamp = i % count;
+    diya.lampOf.set(text, lamp);
+    lamps[lamp].at = Math.min(lamps[lamp].at, at);
+  });
+  Object.assign(diya, { key, lamps, count });
+  return diya;
+}
+
+function drawDiyas() {
+  const paper = paperCanvas();
+  if (!paper) return;
+  const { c, scale } = paper, { voice, music } = palette, calm = calmMotion.matches;
+  const { left, top, side } = patternBox(scale);
+  const { lamps, lampOf, count } = diyaLamps();
+  const now = performance.now() / 1000, t = Math.max(0, position()) + view.offset;
+  const line = view.lines[view.active], text = line && line.text ? line.text.trim() : '';
+  const current = text ? lampOf.get(text) ?? -1 : -1;
+  const again = text && view.lines.slice(0, Math.max(0, view.active)).some(l => (l.text || '').trim() === text);
+  const flare = again && vis.vocal > .05 ? 1.18 : 1;
+
+  const cols = Math.ceil(Math.sqrt(count * 1.25)), rows = Math.ceil(count / cols);
+  const cellW = side / cols, cellH = side / rows, s = Math.min(cellW * .62, cellH * .55);
+  const clay = [.5, .25, .13].map((v, i) => v * .75 + music[i] * .25);
+
+  lamps.forEach((lamp, i) => {
+    const row = Math.floor(i / cols), col = i % cols;
+    const inRow = row === rows - 1 ? count - row * cols : cols;
+    const x = left + (col + .5 + (cols - inRow) / 2 + (row % 2 ? .18 : -.18)) * cellW;
+    const y = top + (row + .7) * cellH;
+    const lit = lamp.at <= t, isCurrent = i === current;
+    const grow = !lit ? 0 : calm ? 1 : Math.min(1, (t - lamp.at) / .7);
+    const flicker = calm ? 1 : 1 + .1 * Math.sin(now * 11 + i * 2.1) + .07 * Math.sin(now * 17.3 + i * .7) + vis.kick * .12;
+    const h = s * (isCurrent ? 1.15 + vis.vocal * .7 : .78) * flicker * grow * flare;
+
+    if (grow) {   // light pooling round the lamp
+      c.globalCompositeOperation = 'lighter';
+      const r = s * (isCurrent ? 2.6 : 1.7) * grow;
+      const glow = c.createRadialGradient(x, y - s * .25, 0, x, y - s * .25, r);
+      glow.addColorStop(0, rgba(voice, (isCurrent ? .34 : .16) * flare));
+      glow.addColorStop(1, rgba(voice, 0));
+      c.fillStyle = glow;
+      c.fillRect(x - r, y - s * .25 - r, r * 2, r * 2);
+      c.globalCompositeOperation = 'source-over';
+    }
+
+    // The clay bowl, lit from above when its flame is burning.
+    const bowl = c.createLinearGradient(x, y - s * .1, x, y + s * .3);
+    bowl.addColorStop(0, rgba(clay.map(v => Math.min(1, v * (1.5 + grow * .8))), 1));
+    bowl.addColorStop(1, rgba(clay.map(v => v * .45), 1));
+    c.fillStyle = bowl;
+    c.beginPath();
+    c.moveTo(x - s * .55, y - s * .06);
+    c.quadraticCurveTo(x - s * .5, y + s * .3, x, y + s * .3);
+    c.quadraticCurveTo(x + s * .5, y + s * .3, x + s * .55, y - s * .06);
+    c.quadraticCurveTo(x + s * .62, y - s * .14, x + s * .7, y - s * .2);   // the spout
+    c.quadraticCurveTo(x, y + s * .02, x - s * .55, y - s * .06);
+    c.fill();
+
+    if (!grow) return;
+    // The flame: a teardrop, white-hot at the wick, the song's colour at the tip.
+    const fx = x + s * .48, fy = y - s * .14, w = s * .2 * (.8 + grow * .2);
+    const sway = calm ? 0 : Math.sin(now * 3.1 + i) * s * .05;
+    const flame = c.createLinearGradient(fx, fy - h, fx, fy);
+    flame.addColorStop(0, rgba(voice, 0));
+    flame.addColorStop(.35, rgba(voice.map(v => Math.min(1, v * 1.3 + .1)), .9));
+    flame.addColorStop(.78, 'rgb(255 228 170 / .98)');
+    flame.addColorStop(1, 'rgb(255 250 236)');
+    c.fillStyle = flame;
+    c.beginPath();
+    c.moveTo(fx + sway, fy - h);
+    c.quadraticCurveTo(fx + w, fy - h * .32, fx, fy);
+    c.quadraticCurveTo(fx - w, fy - h * .32, fx + sway, fy - h);
+    c.fill();
+  });
+}
+
+// --- Vinyl: the cover turns as the record's label -----------------------------------
+// The grooves light up with the music, the sung word circles the label, and the tone
+// arm moves in from the edge as the song goes on.
+
+const vinyl = { angle: 0, speed: 0, art: undefined, img: null };
+
+function drawVinyl(dt) {
+  const paper = paperCanvas();
+  if (!paper) return;
+  const { c, scale } = paper, { voice, music } = palette, calm = calmMotion.matches;
+  const { left, top, side } = patternBox(scale);
+  const R = side * .46, cx = left + side / 2, cy = top + side / 2;
+
+  if (vinyl.art !== view.art) {
+    vinyl.art = view.art;
+    vinyl.img = null;
+    if (view.art) { const img = new Image(); img.onload = () => { if (vinyl.art === view.art) vinyl.img = img; }; img.src = `/art?id=${view.art}`; }
+  }
+  vinyl.speed += ((vis.playing ? .85 : 0) - vinyl.speed) * Math.min(1, dt * 1.4);   // spins up and winds down
+  if (!calm) vinyl.angle += vinyl.speed * dt;
+
+  c.save();
+  c.translate(cx, cy);
+  const shadow = c.createRadialGradient(0, R * .06, R * .9, 0, R * .06, R * 1.12);
+  shadow.addColorStop(0, 'rgb(0 0 0 / .5)');
+  shadow.addColorStop(1, 'rgb(0 0 0 / 0)');
+  c.fillStyle = shadow;
+  c.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4);
+  c.fillStyle = 'rgb(17 16 18)';
+  c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
+
+  // Grooves, each lit by a slice of the sound.
+  const rings = 26;
+  c.lineWidth = Math.max(1, scale * .8);
+  for (let k = 0; k < rings; k++) {
+    const band = vis.bands[Math.floor(k / rings * 24)] || 0;
+    c.strokeStyle = rgba(music.map(v => Math.min(1, v * 1.4 + .15)), .05 + band * .42);
+    c.beginPath(); c.arc(0, 0, R * (.4 + .57 * k / (rings - 1)), 0, Math.PI * 2); c.stroke();
+  }
+  // The shine stays put while the record turns under it.
+  if (c.createConicGradient) {
+    const shine = c.createConicGradient(-.7, 0, 0);
+    shine.addColorStop(0, 'rgb(255 255 255 / 0)');
+    shine.addColorStop(.07, 'rgb(255 255 255 / .09)');
+    shine.addColorStop(.14, 'rgb(255 255 255 / 0)');
+    shine.addColorStop(.5, 'rgb(255 255 255 / 0)');
+    shine.addColorStop(.57, 'rgb(255 255 255 / .07)');
+    shine.addColorStop(.64, 'rgb(255 255 255 / 0)');
+    c.fillStyle = shine;
+    c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
+  }
+  // The label: the album cover, turning.
+  c.save();
+  c.rotate(vinyl.angle);
+  c.beginPath(); c.arc(0, 0, R * .34, 0, Math.PI * 2); c.clip();
+  if (vinyl.img) c.drawImage(vinyl.img, -R * .34, -R * .34, R * .68, R * .68);
+  else { c.fillStyle = rgba(voice, 1); c.fillRect(-R, -R, R * 2, R * 2); }
+  c.restore();
+  c.fillStyle = 'rgb(17 16 18)';
+  c.beginPath(); c.arc(0, 0, R * .025, 0, Math.PI * 2); c.fill();
+
+  // The sung word, circling the label.
+  const active = $('vis-line').querySelector('.word.active') || $('vis-line').querySelector('.word.sung:last-of-type');
+  const word = active ? active.textContent.replace(/[.,!?;:"“”()]+/g, '').trim() : '';
+  if (word) {
+    const orbit = R * .52, size = R * .13 * (1 + vis.vocal * .12), heading = (calm ? 0 : vinyl.angle * .5) - Math.PI / 2;
+    c.font = `800 ${size}px ${getComputedStyle(document.body).fontFamily}`;
+    c.fillStyle = 'rgb(246 244 239)';
+    c.shadowColor = rgba(voice, 1);
+    c.shadowBlur = calm ? 0 : size * .35;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    if (/^[\u0000-ɏ\s'’-]+$/.test(word)) {   // Latin letters can follow the curve one by one
+      const widths = [...word].map(ch => c.measureText(ch).width), total = widths.reduce((a, b) => a + b, 0);
+      let along = heading - total / orbit / 2;
+      [...word].forEach((ch, i) => {
+        const mid = along + widths[i] / orbit / 2;
+        c.save();
+        c.rotate(mid);
+        c.translate(0, -orbit);
+        c.fillText(ch, 0, 0);
+        c.restore();
+        along += widths[i] / orbit;
+      });
+    } else {   // other scripts join their letters, so the word rides the orbit whole
+      c.fillText(word, Math.sin(heading) * orbit, -Math.cos(heading) * orbit);
+    }
+    c.shadowBlur = 0;
+  }
+  c.restore();
+
+  // The tone arm, moving in across the record as the song plays.
+  const done = duration ? Math.min(1, Math.max(0, (position() + view.offset) / duration)) : 0;
+  const pivot = [cx + R * 1.0, cy - R * .98], reach = R * (.94 - .5 * done), aim = -.42;
+  const tip = [cx + Math.cos(aim) * reach, cy + Math.sin(aim) * reach];
+  c.lineCap = 'round';
+  c.strokeStyle = 'rgb(214 212 220 / .9)';
+  c.lineWidth = R * .028;
+  c.beginPath(); c.moveTo(...pivot); c.lineTo(...tip); c.stroke();
+  c.fillStyle = 'rgb(214 212 220)';
+  c.beginPath(); c.arc(...pivot, R * .055, 0, Math.PI * 2); c.fill();
+  c.fillStyle = 'rgb(120 118 126)';
+  c.beginPath(); c.arc(...tip, R * .03, 0, Math.PI * 2); c.fill();
+}
+
 function setVisStyle(name) {
   retireHint('styles');
   visStyle = name;
@@ -1700,13 +1969,29 @@ function setVisStyle(name) {
   showVisStyle(true);
 }
 
-const VIS_STYLES = ['rings', 'kolam', 'words'];
-let pagerAt = null, pagerTimer = 0;
+let pagerSlot = null, pagerTimer = 0;
+
+// The row holds three copies of the styles, so it can always scroll on in either direction.
+// Only the middle copy is read out or reachable by keyboard; the others are scenery.
+function buildPager() {
+  const track = $('vis-pager').querySelector('.track');
+  for (let copy = 0; copy < 3; copy++) {
+    for (const style of VIS_STYLES) {
+      const button = document.createElement('button');
+      button.dataset.style = style;
+      button.textContent = VIS_NAMES[style];
+      if (copy === 1) button.setAttribute('role', 'tab');
+      else { button.setAttribute('aria-hidden', 'true'); button.tabIndex = -1; }
+      button.onclick = () => setVisStyle(style);
+      track.append(button);
+    }
+  }
+}
 
 function showVisStyle(announce) {
   document.body.classList.toggle('paper-on', visStyle !== 'rings');
-  $('stage').classList.toggle('kolam', visStyle === 'kolam');
-  $('stage').classList.toggle('words', visStyle === 'words');
+  for (const style of VIS_STYLES) $('stage').classList.toggle(style, visStyle === style);
+  $('stage').classList.toggle('lower', ['kolam', 'diyas', 'vinyl'].includes(visStyle));
   for (const button of $('vis-pager').querySelectorAll('button')) button.setAttribute('aria-selected', button.dataset.style === visStyle);
   fitVisLine();
   placePager(announce);
@@ -1719,35 +2004,32 @@ function wakePager() {
   pagerTimer = setTimeout(() => $('vis-pager').classList.remove('awake'), 3500);
 }
 
-// The drop sits on the current style. While a finger drags sideways it stretches toward the
-// style it would land on, or barely gives at the end of the row.
+// The drop stays in the middle and the row slides under it. While a finger drags sideways the row
+// follows and the drop stretches; let go and it settles on the style it landed on.
 function placePager(animated, drag = 0) {
-  const pager = $('vis-pager'), drop = pager.querySelector('.drop');
-  const buttons = [...pager.querySelectorAll('button')];
-  const index = VIS_STYLES.indexOf(visStyle), on = buttons[index];
-  if (!on || !on.offsetWidth) return;
-  let x = on.offsetLeft, w = on.offsetWidth;
-  if (drag) {
-    const target = buttons[index + Math.sign(drag)], pull = Math.min(1, Math.abs(drag));
-    if (!target) {
-      x += Math.sign(drag) * pull * 6;
-    } else if (target.offsetLeft > x) {
-      w += (target.offsetLeft + target.offsetWidth - x - w) * pull * .55;
-    } else {
-      const reach = (x - target.offsetLeft) * pull * .55;
-      x -= reach;
-      w += reach;
-    }
-  }
-  drop.style.width = w + 'px';
-  drop.style.transform = `translateX(${x}px)` + (drag ? ` scaleY(${1 - Math.min(1, Math.abs(drag)) * .14})` : '');
-  if (animated && pagerAt && !calmMotion.matches && (pagerAt.x !== x || pagerAt.w !== w)) {
-    drop.animate([
-      { transform: `translateX(${pagerAt.x}px)`, width: pagerAt.w + 'px' },
-      { transform: `translateX(${x}px)`, width: w + 'px' },
-    ], { duration: 420, easing: 'cubic-bezier(.22, 1, .36, 1)' });
-  }
-  pagerAt = { x, w };
+  const pager = $('vis-pager'), track = pager.querySelector('.track'), drop = pager.querySelector('.drop');
+  const item = track.firstElementChild?.offsetWidth;
+  if (!item) return;
+  const count = VIS_STYLES.length, real = VIS_STYLES.indexOf(visStyle);
+  const was = pagerSlot ?? real + count;
+  // The copy of the chosen style nearest to where the row is now, so it moves the short way round.
+  const slot = [real, real + count, real + 2 * count].reduce((best, s) => Math.abs(s - was) < Math.abs(best - was) ? s : best);
+  const at = place => (1 - place) * item;   // puts that place in the middle of the window
+  pagerSlot = slot;
+  track.style.transform = `translateX(${at(slot + drag * .7)}px)`;
+  const stretch = Math.min(1, Math.abs(drag)) * .3;
+  drop.style.width = item * (1 + stretch) + 'px';
+  drop.style.transform = `translateX(${3 + item - item * stretch / 2}px)` + (drag ? ` scaleY(${1 - Math.min(1, Math.abs(drag)) * .14})` : '');
+  const settle = () => {   // back to the middle copy, invisibly, so there is always room to scroll on
+    if (pagerSlot !== slot || slot === real + count) return;
+    pagerSlot = real + count;
+    track.style.transform = `translateX(${at(pagerSlot)}px)`;
+  };
+  if (animated && !drag && was !== slot && !calmMotion.matches) {
+    track.animate([{ transform: `translateX(${at(was)}px)` }, { transform: `translateX(${at(slot)}px)` }],
+      { duration: 460, easing: 'cubic-bezier(.22, 1, .36, 1)' }).onfinish = settle;
+    drop.animate([{ scale: '1 1' }, { scale: '1.12 .88', offset: .4 }, { scale: '1 1' }], { duration: 460, easing: 'ease-out' });
+  } else if (!drag) settle();
 }
 
 function drawVis(now) {
@@ -1763,7 +2045,10 @@ function drawVis(now) {
   readMusic(now, dt);
   blendPalette(dt);
   if (visStyle !== 'rings') {
-    if (visStyle === 'kolam') drawKolam(dt); else drawWords();
+    if (visStyle === 'kolam') drawKolam(dt);
+    else if (visStyle === 'diyas') drawDiyas();
+    else if (visStyle === 'vinyl') drawVinyl(dt);
+    else drawWords();
     for (let i = touches.length - 1; i >= 0; i--) if (!touches[i].down) touches.splice(i, 1);
     return;
   }
@@ -1809,7 +2094,7 @@ function applyExtras() {
     const romanLine = li.querySelector('.roman');
     if (romanLine.textContent !== roman) setWords(romanLine, roman);
     li.querySelector('.english').textContent = english;
-    if ((roman && extras.roman) || (english && extras.english)) any = true;
+    if ((roman && extras.roman) || (english && extras.english) || (extras.context && view.context[li.dataset.text])) any = true;
   }
   $('stage').classList.toggle('extras', any && view.plain);
   view.hasExtras = any;
@@ -1818,7 +2103,7 @@ function applyExtras() {
 }
 
 function syncSplit() {
-  const split = activeTab === 'lyrics' && view.lines.length > 0 && (view.hasExtras || ((view.translating || view.naturalizing) && extras.english));
+  const split = activeTab === 'lyrics' && view.lines.length > 0 && (view.hasExtras || ((view.translating || view.naturalizing) && extras.english) || (view.explaining && extras.context));
   const was = $('now').classList.contains('split');
   $('now').classList.toggle('split', split);
   stageRect = null;
@@ -1832,12 +2117,12 @@ function showGloss() {
   const original = line && line.text ? line.text.trim() : '';
   const roman = extras.roman ? view.roman[original] || '' : '';
   const english = extras.english ? (extras.natural && view.natural[original]) || view.english[original] || '' : '';
-  const romanLine = $('gloss-roman'), englishLine = $('gloss-english');
-  const waiting = view.translating || (view.naturalizing && extras.natural);
-  if (!view.translating && waiting) $('gloss-wait-text').textContent = 'Writing a natural translation…';
-  $('gloss-wait').hidden = !(waiting && extras.english);
-  const changed = romanLine.textContent !== roman || englishLine.textContent !== english;
+  const note = extras.context ? view.context[original] || '' : '';
+  const romanLine = $('gloss-roman'), englishLine = $('gloss-english'), noteLine = $('gloss-context');
+  paintWait();
+  const changed = romanLine.textContent !== roman || englishLine.textContent !== english || noteLine.textContent !== note;
   if (!changed) return;
+  noteLine.textContent = note;
   if (romanLine.textContent !== roman) setWords(romanLine, roman);
   const code = langOf(original);
   tagLang(romanLine, code && `${code}-Latn`);
@@ -1850,13 +2135,14 @@ function showGloss() {
     scale -= .08;
     gloss.style.setProperty('--gs', scale);
   }
-  if (roman || english) gloss.animate({ opacity: [.25, 1] }, { duration: 220, easing: 'ease-out' });
+  if (roman || english || note) gloss.animate({ opacity: [.25, 1] }, { duration: 220, easing: 'ease-out' });
 }
 
 function showExtras() {
   document.body.classList.toggle('no-roman', !extras.roman);
   document.body.classList.toggle('no-english', !extras.english);
   for (const button of document.querySelectorAll('#timing .roman button')) button.setAttribute('aria-checked', (button.dataset.roman === 'on') === extras.roman);
+  for (const button of document.querySelectorAll('#timing .context button')) button.setAttribute('aria-checked', (button.dataset.context === 'on') === extras.context);
   const mode = !extras.english ? 'off' : extras.natural ? 'natural' : 'literal';
   for (const button of document.querySelectorAll('#timing .english button')) button.setAttribute('aria-checked', button.dataset.english === mode);
   placeEnglishDrop(true);
@@ -1920,9 +2206,16 @@ async function loadTranslation(key) {
     const res = await fetch('/api/translation?key=' + key, { cache: 'no-store' });
     const data = await res.json();
     if (view.key !== key) return;
-    $('gloss-wait-text').textContent = data.status === 'failed' ? 'Translation is taking a moment…' : 'Translating…';
+    view.wait.literal = data.status === 'loading' && data.total ? { total: data.total, from: performance.now() - (data.elapsed || 0) * 1000 } : null;
+    view.wait.slow = data.status === 'failed';
     setTranslating(data.status === 'loading' || data.status === 'failed');
-    if (data.status === 'ready') { view.english = data.lines; applyExtras(); if (extras.natural) loadNatural(key); return; }
+    if (data.status === 'ready') {
+      view.english = data.lines;
+      applyExtras();
+      if (extras.natural) loadNatural(key);
+      if (extras.context) loadContext(key);
+      return;
+    }
     if (data.status === 'none') return;
     wait = data.status === 'loading' ? 1500 : 15000;
   } catch {
@@ -1948,12 +2241,74 @@ async function loadNatural(key) {
     const res = await fetch(`/api/translation?key=${key}&style=natural`, { cache: 'no-store' });
     const data = await res.json();
     if (view.key !== key) return;
-    if (data.status === 'ready') { view.natural = data.lines; setNaturalizing(false); applyExtras(); return; }
-    if (data.status === 'loading') wait = 2000;
+    if (data.status === 'ready') { view.natural = data.lines; view.wait.natural = null; setNaturalizing(false); applyExtras(); return; }
+    if (data.status === 'loading') { wait = 1200; view.wait.natural = { done: data.done || 0, total: data.total || 1 }; }
     else if (data.status === 'failed') wait = 30000;
   } catch { wait = 15000; }
-  setNaturalizing(wait === 2000);
+  setNaturalizing(wait === 1200);
   if (wait && view.key === key && extras.natural) view.naturalTimer = setTimeout(() => loadNatural(key), wait);
+}
+
+function setExplaining(on) {
+  if (view.explaining === on) return;
+  view.explaining = on;
+  syncSplit();
+  showGloss();
+}
+
+// Notes on what lines mean in the song as a whole, written on the Mac after the translation.
+async function loadContext(key) {
+  clearTimeout(view.contextTimer);
+  if (view.key !== key || !extras.context || Object.keys(view.context).length) return;
+  let wait = 0;
+  try {
+    const res = await fetch(`/api/translation?key=${key}&style=context`, { cache: 'no-store' });
+    const data = await res.json();
+    if (view.key !== key) return;
+    if (data.status === 'ready') { view.context = data.lines; view.wait.context = null; setExplaining(false); applyExtras(); return; }
+    if (data.status === 'loading') { wait = 1200; view.wait.context = { done: data.done || 0, total: data.total || 1 }; }
+    else if (data.status === 'failed') wait = 30000;
+  } catch { wait = 15000; }
+  setExplaining(wait === 1200);
+  if (wait && view.key === key && extras.context) view.contextTimer = setTimeout(() => loadContext(key), wait);
+}
+
+// The ring under the lyric fills with real progress: lines the model has written, or for the plain
+// translation, an estimate from how long a song this size usually takes.
+function waitingFor() {
+  if (view.translating && extras.english) {
+    const w = view.wait.literal;
+    const p = w ? Math.min(.95, 1 - Math.exp(-(performance.now() - w.from) / 1000 / (4 + w.total * .3))) : .04;
+    return { p, text: view.wait.slow ? 'Translation is taking a moment…' : 'Translating…' };
+  }
+  if (view.naturalizing && extras.natural && extras.english) {
+    const w = view.wait.natural || { done: 0, total: 1 };
+    return { p: w.done / w.total, text: 'Writing a natural translation…' };
+  }
+  if (view.explaining && extras.context) {
+    const w = view.wait.context || { done: 0, total: 1 };
+    return { p: w.done / w.total, text: 'Finding what the lines mean…' };
+  }
+  return null;
+}
+
+function paintWait() {
+  const job = waitingFor(), box = $('gloss-wait');
+  box.hidden = !job;
+  if (!job) return;
+  const p = Math.max(.04, Math.min(1, job.p));
+  box.style.setProperty('--p', p.toFixed(3));
+  box.setAttribute('aria-valuenow', Math.round(p * 100));
+  if ($('gloss-wait-text').textContent !== job.text) $('gloss-wait-text').textContent = job.text;
+}
+
+function setContext(on) {
+  extras.context = on;
+  store(s => s.setItem('show:context', on ? '1' : '0'));
+  if (on && view.key) loadContext(view.key);
+  showExtras();
+  applyExtras();
+  revealTiming();
 }
 
 // --- Tidbits -------------------------------------------------------------------
@@ -2215,6 +2570,7 @@ function drawSongMap() {
 function tick() {
   const t = Math.max(0, position());
   tickTidbits();
+  if (view.translating) paintWait();   // the estimate keeps filling between checks
   $('time').hidden = !duration;
   if (duration) {
     $('fill').style.transform = `scaleX(${Math.min(1, t / duration)})`;
@@ -2447,9 +2803,12 @@ new ResizeObserver(() => { stageRect = null; }).observe($('stage'));
 for (const button of document.querySelectorAll('#timing .roman button')) {
   button.onclick = () => { if ((button.dataset.roman === 'on') !== extras.roman) toggleExtra('roman'); else revealTiming(); };
 }
+for (const button of document.querySelectorAll('#timing .context button')) {
+  button.onclick = () => { if ((button.dataset.context === 'on') !== extras.context) setContext(!extras.context); else revealTiming(); };
+}
 $('offset').onclick = () => { if (view.offset) changeOffset(-view.offset); else revealTiming(); };
 for (const button of document.querySelectorAll('#timing .english button')) button.onclick = () => setEnglish(button.dataset.english);
-for (const button of $('vis-pager').querySelectorAll('button')) button.onclick = () => setVisStyle(button.dataset.style);
+buildPager();
 new ResizeObserver(() => placePager(false)).observe($('vis-pager'));
 $('earlier').onclick = () => changeOffset(STEP);
 $('later').onclick = () => changeOffset(-STEP);

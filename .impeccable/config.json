@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-11-09T13:20:49.271Z",
         "reason": "Karaoke word fill: one hard-edged colour stop that shows how much of the word has been sung, a functional progress wipe rather than decoration"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-11-10T11:36:47.637Z",
+        "reason": "Claude decided: the .seg rows are glass segmented controls (44px buttons in a 50px well with a 3px inset for the drop), the same pill pattern as the tabs, which the user asked for as the house style; text sits 14px from the edge vertically and 15px horizontally"
       }
     ]
   }

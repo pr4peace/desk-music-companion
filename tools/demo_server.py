@@ -8,6 +8,7 @@ visualizer hears is made up too: a steady beat, with a voice whenever a line is 
 
     /demo/seek?t=42     jumps the song to 42 seconds
     /demo/tidbits?status=loading|ready   shows the tidbits loading or ready
+    /demo/translating?seconds=20         acts as if the translations take that long, to see the progress ring
 """
 import json
 import math
@@ -45,6 +46,14 @@ SONG = [
     (79.5, "दिल में बजे मृदंग", "dil mein baje mridang", "In the heart plays a mridang", "my heart keeps time like a drum"),
     (84.0, "", "", "", ""),
 ]
+
+# What some lines mean in the song as a whole. Most lines need no note.
+CONTEXT = {
+    "चाय की प्याली हाथों में": "Tea here is the small daily ritual; the song is about noticing ordinary mornings.",
+    "मेज़ पे बैठा छोटा सा फ़ोन": "The phone is the listener's companion, the song half-jokingly singing about its own screen.",
+    "दिल में बजे मृदंग": "A mridang keeps rhythm in Carnatic music, so the heart becoming one means joy has a steady beat.",
+    "मेज़ पे जलता रहे": "Jalta rahe is used for a lamp that keeps burning, so the song is a light left on through the evening.",
+}
 
 TIDBITS = [
     {"kind": "fact", "headline": "Written for a desk",
@@ -106,6 +115,22 @@ class Player:
 
 player = Player()
 tidbit_status = {"value": "ready"}
+slow = {"until": 0.0, "length": 1.0}
+
+
+def translation(style):
+    """The demo's translations, or how far along they are while it pretends to be busy."""
+    left = slow["until"] - time.time()
+    lines = [row for row in SONG if row[1]]
+    if left > 0:
+        share = 1 - left / slow["length"]
+        if style == "literal":
+            return {"status": "loading", "total": len(lines), "elapsed": round(share * slow["length"], 1)}
+        return {"status": "loading", "done": int(share * len(lines)), "total": len(lines)}
+    if style == "context":
+        return {"status": "ready", "lines": CONTEXT}
+    column = 4 if style == "natural" else 3
+    return {"status": "ready", "lines": {row[1]: row[column] for row in lines}}
 
 
 def singing(position):
@@ -168,8 +193,7 @@ class Handler(BaseHTTPRequestHandler):
                 "roman": {text: roman for _start, text, roman, *_ignored in SONG if text},
             })
         elif url.path == "/api/translation":
-            column = 4 if query.get("style") == ["natural"] else 3
-            self.send_json({"status": "ready", "lines": {row[1]: row[column] for row in SONG if row[1]}})
+            self.send_json(translation(query.get("style", ["literal"])[0]))
         elif url.path == "/api/tidbits":
             if tidbit_status["value"] == "loading":
                 self.send_json({"status": "loading", "step": 2, "steps": 4, "label": "Reading about the song…"})
@@ -182,6 +206,10 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/demo/seek":
             player.seek(float(query.get("t", ["0"])[0]))
             self.send_json({"position": player.position()})
+        elif url.path == "/demo/translating":
+            slow["length"] = max(1.0, float(query.get("seconds", ["20"])[0]))
+            slow["until"] = time.time() + slow["length"]
+            self.send_json(slow)
         elif url.path == "/demo/tidbits":
             tidbit_status["value"] = query.get("status", ["ready"])[0]
             self.send_json(tidbit_status)
