@@ -1521,7 +1521,13 @@ MANIFEST = json.dumps({
     "background_color": "#0b0b0d",
     "theme_color": "#0b0b0d",
     "start_url": "/",
+    "icons": [
+        {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+        {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    ],
 }).encode("utf-8")
+# Icons for adding the page to a phone's home screen.
+HOME_ICONS = {"/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1620,6 +1626,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(b"Not found", "text/plain", 404)
         elif url.path == "/manifest.webmanifest":
             self.send(MANIFEST, "application/manifest+json")
+        elif url.path in HOME_ICONS:
+            self.send((ROOT / "assets" / url.path.lstrip("/")).read_bytes(), "image/png", cache="max-age=86400")
         else:
             self.send(b"Not found", "text/plain", 404)
 

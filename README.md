@@ -79,7 +79,14 @@ macOS will ask for a few permissions the first time each is needed:
 
 Keep the phone on the same Wi-Fi as the Mac. With a free Apple account the app stops opening after 7 days until you run it from Xcode again.
 
-No Xcode? Open the address in Safari on the phone. Everything works except keeping the screen awake.
+**Easier, with no Xcode and nothing that expires: add it to the Home Screen.**
+
+1. On the iPhone, open Safari and go to the address from `install.sh`, for example `http://Your-Mac.local:8787`.
+2. Tap Share, then **Add to Home Screen**. It gets its own icon and opens full screen, like an app.
+3. In Settings → Display & Brightness, set **Auto-Lock** to **Never**, so the screen stays on. (Web pages can only keep the screen awake on their own over HTTPS, and this one is plain HTTP on your Wi-Fi.)
+4. Optional: Settings → Accessibility → **Guided Access** locks the phone to this one screen. Triple-click the side button to start or stop it.
+
+The Xcode app above does the same thing and keeps the screen on by itself, but with a free Apple account it has to be reinstalled every 7 days.
 
 ### 3. Optional: a local model
 

@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Desk Music">
 <meta name="theme-color" content="#0b0b0d">
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
   :root {
     --bg: #0b0b0d;
@@ -1512,7 +1513,10 @@ function settleWord(word, area, now, c) {
   let best = null, least = Infinity;
   for (let k = 0; k < 14; k++) {   // the emptiest of a few random spots
     const x = area.x + bw / 2 + random() * Math.max(1, area.w - bw), y = area.y + bh / 2 + random() * Math.max(1, area.h - bh);
-    let overlap = 0;
+    // Keep clear of the middle, where the word being sung lands.
+    const middleW = area.w * .3, middleH = area.h * .2, middleX = area.x + area.w / 2, middleY = area.y + area.h / 2;
+    let overlap = 4 * Math.max(0, Math.min(x + bw / 2, middleX + middleW) - Math.max(x - bw / 2, middleX - middleW))
+      * Math.max(0, Math.min(y + bh / 2, middleY + middleH) - Math.max(y - bh / 2, middleY - middleH));
     for (const other of kin.settled.slice(-24)) {
       overlap += Math.max(0, Math.min(x + bw / 2, other.x + other.bw / 2) - Math.max(x - bw / 2, other.x - other.bw / 2))
         * Math.max(0, Math.min(y + bh / 2, other.y + other.bh / 2) - Math.max(y - bh / 2, other.y - other.bh / 2));
@@ -2211,6 +2215,16 @@ function apply(state, sent) {
   $('tag').hidden = playing;
   screen(pausedSince && Date.now() - pausedSince > IDLE_AFTER_PAUSE_MS ? 'idle' : 'now');
 }
+
+// Keeps the screen on where the browser allows it. Phones only allow this over HTTPS or on the
+// Mac itself, so on the desk phone the dependable way is Auto-Lock set to Never.
+let wakeLock = null;
+async function keepAwake() {
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible' || (wakeLock && !wakeLock.released)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch { /* not allowed here */ }
+}
+document.addEventListener('visibilitychange', keepAwake);
+keepAwake();
 
 async function poll() {
   const sent = performance.now();
