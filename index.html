@@ -142,7 +142,9 @@
   body.vis-on.paper-on #kolam { display: block; }
   body.vis-on.paper-on #vis { display: none; }
   body.vis-on.paper-on #backdrop { visibility: hidden; }
-  #stage.vis.kolam #vis-lyric { top: 63%; }   /* below the pattern, not across it */
+  /* Below the pattern, at the lower right, like the caption under a drawing. */
+  #stage.vis.kolam #vis-lyric { top: 63%; place-items: end end; padding-bottom: 54px; }   /* clear of the hint above the tabs */
+  #stage.vis.kolam #vis-line { text-align: right; }
   #stage.words #vis-line { visibility: hidden; }   /* it still tracks the sung word, unseen */
   /* Which visual is showing, and that a sideways swipe changes it: the same glass and drop as the tabs. */
   #vis-pager {
@@ -378,7 +380,8 @@
     #gloss-roman { font-size: calc(var(--gs, 1) * clamp(19px, 3vw, 27px)); }
     #gloss-english { font-size: calc(var(--gs, 1) * clamp(17px, 2.5vw, 23px)); }
     #tb-head { font-size: clamp(34px, 6.2vw, 56px); }
-    #stage.vis.kolam #vis-lyric, #stage.vis.words #vis-lyric { top: 44px; left: 52%; }
+    #stage.vis.kolam #vis-lyric, #stage.vis.words #vis-lyric { top: 44px; left: 52%; place-items: center; padding-bottom: 0; }
+    #stage.vis.kolam #vis-line { text-align: center; }
     /* Sideways the controls stand over the side column, never across the line being sung. */
     #timing { left: var(--pad-x); right: auto; bottom: calc(var(--pad-bottom) + 62px); width: min(380px, 46vw); gap: 10px; padding: 12px; border-radius: 28px; }
     #now.split #timing { left: auto; right: var(--pad-x); }

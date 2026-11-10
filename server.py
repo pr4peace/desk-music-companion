@@ -1241,7 +1241,17 @@ def mentions_any(text, words):
 
 def clean_album(album):
     album = re.sub(r"\s*[\(\[].*?[\)\]]\s*", " ", album or "")
-    return re.sub(r"\b(original motion picture soundtrack|soundtrack|ost|- ?ep|- ?single)\b", "", album, flags=re.I).strip(" -")
+    album = re.sub(r"\s+-\s*(ep|single)\s*$", "", album, flags=re.I)
+    return re.sub(r"\b(original motion picture soundtrack|soundtrack|ost)\b", "", album, flags=re.I).strip(" -")
+
+
+def film_of(*texts):
+    """The film a song comes from, when the title or album says so: 'Magale (From "Baththa")'."""
+    for text in texts:
+        found = re.search(r"\(\s*from\s+[\"“']?([^\"”')]+?)[\"”']?\s*\)", text or "", re.I)
+        if found:
+            return found.group(1).strip()
+    return ""
 
 
 def grounded(text, notes):
@@ -1409,6 +1419,7 @@ class TidbitStore:
         name = re.sub(r"\s*[\(\[].*?[\)\]]\s*", " ", track["name"]).strip()
         artist = re.split(r",|&| feat\.?| ft\.?| x | and ", track["artist"] or "")[0].strip()
         album = clean_album(track.get("album"))
+        film = film_of(track["name"], track.get("album"))
         artist_words = [word for word in plain_words(artist).split() if len(word) > 2]
         sources = []
 
@@ -1424,6 +1435,16 @@ class TidbitStore:
             sources += find_articles(
                 album,
                 lambda title: base_title(title) == plain_words(album),
+                lambda text: mentions_any(text, artist_words + song_words),
+                want=2,
+            )
+        if film and plain_words(film) not in (plain_words(name), plain_words(album)):
+            # A single from a film is usually written up in the film's soundtrack article, not its own.
+            self._progress(key, 1, f"Reading about {film}")
+            song_words = [word for word in plain_words(name).split() if len(word) > 3]
+            sources += find_articles(
+                f"{film} soundtrack",
+                lambda title: base_title(title) == plain_words(film),
                 lambda text: mentions_any(text, artist_words + song_words),
                 want=2,
             )
