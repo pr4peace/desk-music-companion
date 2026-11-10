@@ -139,13 +139,14 @@
   #stage.vis #lines, #stage.vis #note, #stage.tidbits #lines, #stage.tidbits #note,
   #stage:not(.vis) #vis-note, #stage:not(.vis) #vis-lyric, #stage:not(.vis) #vis-pager, #stage:not(.tidbits) #tidbits { display: none; }
   #kolam { position: fixed; inset: 0; width: 100%; height: 100%; display: none; }
-  body.vis-on.kolam-on #kolam { display: block; }
-  body.vis-on.kolam-on #vis { display: none; }
-  body.vis-on.kolam-on #backdrop { visibility: hidden; }
+  body.vis-on.paper-on #kolam { display: block; }
+  body.vis-on.paper-on #vis { display: none; }
+  body.vis-on.paper-on #backdrop { visibility: hidden; }
   #stage.kolam #vis-lyric { top: 63%; }
+  #stage.words #vis-line { visibility: hidden; }   /* it still tracks the sung word, unseen */
   /* Which visual is showing, and that a sideways swipe changes it: the same glass and drop as the tabs. */
   #vis-pager {
-    position: absolute; left: 50%; bottom: 4px; translate: -50% 0; display: flex; padding: 3px; border-radius: 99px;
+    position: absolute; left: 50%; top: 2px; translate: -50% 0; display: flex; padding: 3px; border-radius: 99px;
     background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 8px 20px rgba(0, 0, 0, .26);
     opacity: .5; transition: opacity .45s ease;
@@ -160,7 +161,7 @@
     color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; transition: color .25s ease;
   }
   #vis-pager button[aria-selected="true"] { color: var(--text); }
-  #stage.vis #vis-lyric { bottom: 44px; }
+  #stage.vis #vis-lyric { top: 44px; }
   /* Each tab's controls hold only what applies there. */
   #now:not([data-tab="lyrics"]) #timing .settings, #now[data-tab="tidbits"] #timing .nudge { display: none; }
 
@@ -176,7 +177,7 @@
   .vis-gone { pointer-events: none; }
   .vis-gone .word { color: var(--text); }
   #vis-note {
-    position: absolute; left: 0; right: 0; top: 8px; text-align: center;
+    position: absolute; left: 0; right: 0; bottom: 8px; text-align: center;
     font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--muted);
   }
 
@@ -345,7 +346,7 @@
     #gloss-roman { font-size: calc(var(--gs, 1) * clamp(21px, 3.3vw, 30px)); }
     #gloss-english { font-size: calc(var(--gs, 1) * clamp(17px, 2.5vw, 23px)); }
     #tb-head { font-size: clamp(34px, 6.2vw, 56px); }
-    #stage.kolam #vis-lyric { top: 0; left: 52%; }
+    #stage.kolam #vis-lyric, #stage.words #vis-lyric { top: 44px; left: 52%; }
     #timing {
       left: 0; right: 0; bottom: calc(var(--pad-bottom) + 60px); width: fit-content; margin-inline: auto;
       display: flex; align-items: center; gap: 18px; padding: 10px 14px; border-radius: 30px;
@@ -390,6 +391,7 @@
       <span class="drop" aria-hidden="true"></span>
       <button data-style="rings" role="tab" aria-selected="true">Rings</button>
       <button data-style="kolam" role="tab" aria-selected="false">Kolam</button>
+      <button data-style="words" role="tab" aria-selected="false">Words</button>
     </div>
     <div id="tidbits">
       <div id="tb-load"><p id="tb-label"></p><span id="tb-track"><span id="tb-fill"></span></span></div>
@@ -1219,8 +1221,8 @@ function blendPalette(dt) {
 // The patterns drawn at South Indian doorsteps: lines looping around a grid of dots, with
 // four-way symmetry. Each verse gets its own pattern, drawn while it is sung.
 
-let visStyle = store(s => s.getItem('vis:style')) === 'kolam' ? 'kolam' : 'rings';
-const kolam = { key: null, cache: new Map(), groups: [], groupsKey: '', shown: -1, current: null, previous: null, fade: 0 };
+let visStyle = ['kolam', 'words'].includes(store(s => s.getItem('vis:style'))) ? store(s => s.getItem('vis:style')) : 'rings';
+const kolam = { key: null, cache: new Map(), groups: [], groupsKey: '', shown: -1, current: null, previous: null, fade: 0, waves: [], lastBeat: 0 };
 
 function seeded(text) {
   let h = 1779033703 ^ text.length;
@@ -1235,14 +1237,26 @@ function seeded(text) {
 
 // A mirror curve: the line runs diagonally between the midpoints of the cells around each dot,
 // passing straight through or bouncing off mirrors. Mirrors are placed symmetrically, so the
-// whole pattern has the symmetry of a square.
+// whole pattern has the symmetry of a square. Each pattern also picks its own shape (square,
+// diamond or cross), size, how tangled it is, how round its loops are, and how it is drawn.
 function buildKolam(seedText) {
   const random = seeded(seedText);
-  const n = 5 + Math.floor(random() * 3), N = n * 2;
-  const density = .28 + random() * .3;
+  const roll = random();
+  const shape = roll < .42 ? 'square' : roll < .74 ? 'diamond' : 'cross';
+  const n = shape === 'square' ? 5 + Math.floor(random() * 4) : 6 + Math.floor(random() * 4), N = n * 2;
+  const density = .15 + random() * .45;
+  const arm = n % 2 ? 2 : 3;
+  const inside = (x, y) => {
+    if (x < 1 || y < 1 || x > N - 1 || y > N - 1) return false;
+    const dx = Math.abs(x - n), dy = Math.abs(y - n);
+    if (shape === 'diamond') return dx + dy <= n - (n % 2);
+    if (shape === 'cross') return dx <= arm || dy <= arm;
+    return true;
+  };
   const decided = new Map();
   const mirrored = (x, y) => {
-    if (x <= 0 || y <= 0 || x >= N || y >= N) return true;
+    const [a, b] = x % 2 === 0 ? [[x - 1, y], [x + 1, y]] : [[x, y - 1], [x, y + 1]];
+    if (!inside(...a) || !inside(...b)) return true;   // the outline of the shape is always a mirror
     const key = [[x, y], [N - x, y], [x, N - y], [N - x, N - y], [y, x], [N - y, x], [y, N - x], [N - y, N - x]]
       .map(p => p.join(',')).sort()[0];
     if (!decided.has(key)) decided.set(key, random() < density);
@@ -1255,7 +1269,8 @@ function buildKolam(seedText) {
     for (let x = 0; x <= N; x++) {
       if ((x + y) % 2 === 0) continue;
       for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-        if (x + dx < 0 || x + dx > N || y + dy < 0 || y + dy > N || used.has(segment(x, y, dx, dy))) continue;
+        const cell = x % 2 === 0 ? [x + dx, y] : [x, y + dy];
+        if (x + dx < 0 || x + dx > N || y + dy < 0 || y + dy > N || !inside(...cell) || used.has(segment(x, y, dx, dy))) continue;
         const points = [];
         let px = x, py = y, ddx = dx, ddy = dy;
         for (let guard = 0; guard < 4 * N * N + 8; guard++) {
@@ -1270,16 +1285,27 @@ function buildKolam(seedText) {
       }
     }
   }
+  const bulge = random() * .55;   // how far each bounce swings out into a round loop
+  const dots = [];
+  for (let y = 1; y < N; y += 2) for (let x = 1; x < N; x += 2) if (inside(x, y)) dots.push([x, y]);
+  const look = random();
   return {
     n,
+    dots,
+    turn: shape === 'square' && random() < .3 ? Math.PI / 4 : 0,
+    double: random() < .4,
+    dotStyle: look < .5 ? 'dot' : look < .75 ? 'ring' : 'none',
+    tint: random() < .6 ? 0 : random() < .5 ? 1 : 2,
     loops: loops.map(points => {
       const m = points.length, out = [];
       for (let i = 0; i < m; i++) {   // rounds each bounce into a curve, the way a hand draws it
         const p0 = points[(i - 1 + m) % m], p1 = points[i], p2 = points[(i + 1) % m];
         const a = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2], b = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+        const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const control = [p1[0] + (p1[0] - mid[0]) * bulge, p1[1] + (p1[1] - mid[1]) * bulge];
         for (let step = 0; step < 6; step++) {
           const t = step / 6, u = 1 - t;
-          out.push([(u * u * a[0] + 2 * u * t * p1[0] + t * t * b[0]) / N, (u * u * a[1] + 2 * u * t * p1[1] + t * t * b[1]) / N]);
+          out.push([(u * u * a[0] + 2 * u * t * control[0] + t * t * b[0]) / N, (u * u * a[1] + 2 * u * t * control[1] + t * t * b[1]) / N]);
         }
       }
       const top = out.reduce((best, p, i) => (p[1] < out[best][1] ? i : best), 0);
@@ -1330,11 +1356,14 @@ function drawKolam(dt) {
   c.fillRect(0, 0, W, H);
 
   const stage = $('stage').getBoundingClientRect(), portrait = innerHeight >= innerWidth;
-  const side = (portrait ? Math.min(stage.width * .94, stage.height * .6) : Math.min(stage.height * .96, stage.width * .48)) * scale;
+  const side = (portrait ? Math.min(stage.width * .94, stage.height * .63 - 52) : Math.min(stage.height - 52, stage.width * .48)) * scale;
   const left = portrait ? (stage.left + stage.width / 2) * scale - side / 2 : stage.left * scale;
-  const top = portrait ? (stage.top + stage.height * .02) * scale : (stage.top + stage.height / 2) * scale - side / 2;
+  const top = portrait ? (stage.top + 46) * scale : (stage.top + 46 + (stage.height - 46) / 2) * scale - side / 2;
+  const now = performance.now() / 1000, middleX = left + side / 2, middleY = top + side / 2;
+  if (!calm && vis.kick > .55 && now - kolam.lastBeat > .28) { kolam.lastBeat = now; kolam.waves.push(now); }
+  kolam.waves = kolam.waves.filter(born => now - born < 1.6);
 
-  if (kolam.key !== view.key) Object.assign(kolam, { key: view.key, cache: new Map(), shown: -1, current: null, previous: null, fade: 0 });
+  if (kolam.key !== view.key) Object.assign(kolam, { key: view.key, salt: Math.random().toString(36).slice(2), cache: new Map(), shown: -1, current: null, previous: null, fade: 0 });
   const t = Math.max(0, position()) + view.offset;
   const groups = kolamGroups();
   let index = 0, progress = 0;
@@ -1347,7 +1376,7 @@ function drawKolam(dt) {
     progress = (t % 24) / 20;
   }
   progress = Math.min(1, Math.max(0, progress));
-  const seedKey = `${view.key}:${index}`;
+  const seedKey = `${view.key}:${kolam.salt}:${index}`;
   if (!kolam.cache.has(seedKey)) kolam.cache.set(seedKey, buildKolam(seedKey));
   if (index !== kolam.shown) {
     if (kolam.current) { kolam.previous = kolam.current.pattern; kolam.fade = 1; }
@@ -1357,17 +1386,26 @@ function drawKolam(dt) {
   kolam.fade = Math.max(0, kolam.fade - dt * 1.1);
 
   const cream = 'rgb(246 240 228)';
+  const hollow = cssColor(deep.map(v => Math.min(1, v * 2)));
   const glow = cssColor(music);
-  const drawLines = (pattern, amount, alpha, grow) => {
+  // Three passes over the drawn part of each line: a soft glow, the line itself, and for the
+  // pattern being drawn, bright streaks that race along it faster as the music gets louder.
+  const drawLines = (pattern, amount, alpha, grow, streaks) => {
     const unit = side / (pattern.n * 2), heads = [];
-    const cx = left + side / 2, cy = top + side / 2;
-    const at = ([x, y]) => [cx + (left + x * side - cx) * grow, cy + (top + y * side - cy) * grow];
+    const at = ([x, y]) => [middleX + (left + x * side - middleX) * grow, middleY + (top + y * side - middleY) * grow];
+    const ink = pattern.tint === 1 ? cssColor(voice) : pattern.tint === 2 ? cssColor(music.map(v => v + (1 - v) * .45)) : cream;
+    const weight = unit * (pattern.double ? .16 : .085) + unit * vis.vocal * .03;
+    const passes = [[unit * .3, glow, .22, false], [weight, ink, .9 + vis.kick * .1, false]];
+    if (pattern.double) passes.push([weight * .42, hollow, 1, false]);   // the traditional double line
+    if (streaks && !calm) passes.push([unit * .14, cssColor(voice), .3 + vis.energy * .7, true]);
     c.lineCap = 'round';
     c.lineJoin = 'round';
-    for (const [width, colour, opacity] of [[unit * .3, glow, .22], [unit * (.085 + vis.vocal * .03), cream, .9 + vis.kick * .1]]) {
+    for (const [width, colour, opacity, dashed] of passes) {
       c.strokeStyle = colour;
       c.lineWidth = width * grow;
       c.globalAlpha = alpha * opacity;
+      c.setLineDash(dashed ? [unit * .9, unit * 5.5] : []);
+      c.lineDashOffset = dashed ? -now * unit * (2.2 + vis.energy * 9) : 0;
       for (const loop of pattern.loops) {
         const target = amount * loop.total;
         if (target <= 0) continue;
@@ -1380,33 +1418,63 @@ function drawKolam(dt) {
           const a = loop.pts[i - 1], b = loop.pts[i];
           const end = at([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
           c.lineTo(...end);
-          if (colour === cream) heads.push(end);
+          if (colour === ink) heads.push(end);
         }
         c.stroke();
       }
     }
+    c.setLineDash([]);
     return heads;
   };
 
-  if (kolam.previous && kolam.fade > 0) drawLines(kolam.previous, 1, kolam.fade * kolam.fade, calm ? 1 : 1 + (1 - kolam.fade) * .08);
+  // The whole pattern sways a little and breathes with the music.
+  c.save();
+  if (!calm) {
+    c.translate(middleX, middleY);
+    c.rotate(Math.sin(now * .23) * .05 + vis.kick * .012);
+    const breathe = 1 + vis.energy * .035;
+    c.scale(breathe, breathe);
+    c.translate(-middleX, -middleY);
+  }
+  const turned = kolam.current.pattern.turn;
+  if (turned) {   // a square set on its point, shrunk to stay inside the same space
+    c.translate(middleX, middleY);
+    c.rotate(turned);
+    c.scale(.72, .72);
+    c.translate(-middleX, -middleY);
+  }
+  if (kolam.previous && kolam.fade > 0) drawLines(kolam.previous, 1, kolam.fade * kolam.fade, calm ? 1 : 1 + (1 - kolam.fade) * .08, false);
 
   // The dots: the beat moves out from the centre; a finger lights the ones under it.
   const pattern = kolam.current.pattern, N = pattern.n * 2, unit = side / N;
   c.fillStyle = cream;
-  for (let y = 1; y < N; y += 2) {
-    for (let x = 1; x < N; x += 2) {
+  c.strokeStyle = cream;
+  c.lineWidth = unit * .025;
+  for (const [x, y] of pattern.dots) {
+    {
       const px = left + x * unit, py = top + y * unit;
       const reach = Math.hypot(x - N / 2, y - N / 2) / (N / 2);
-      let lit = calm ? 0 : vis.kick * Math.max(0, 1 - reach * .7);
+      let lit = 0;
+      for (const born of kolam.waves) {   // each beat sends a ring of light out through the dots
+        const front = (now - born) * 1.1;
+        lit = Math.max(lit, Math.exp(-((reach - front) ** 2) / .012) * (1 - (now - born) / 1.6));
+      }
       for (const touch of touches) if (touch.down && Math.hypot(px - touch.x * W, py - (1 - touch.y) * H) < unit * 1.7) lit = 1;
-      c.globalAlpha = .42 + lit * .55;
+      const resting = pattern.dotStyle === 'none' ? 0 : .42;
+      c.globalAlpha = resting + lit * .55;
+      if (c.globalAlpha < .02) continue;
       c.beginPath();
-      c.arc(px, py, unit * (.06 + lit * .05), 0, Math.PI * 2);
-      c.fill();
+      if (pattern.dotStyle === 'ring' && lit < .3) {
+        c.arc(px, py, unit * .11, 0, Math.PI * 2);
+        c.stroke();
+      } else {
+        c.arc(px, py, unit * (.06 + lit * .05), 0, Math.PI * 2);
+        c.fill();
+      }
     }
   }
 
-  const heads = drawLines(pattern, progress, 1, 1);
+  const heads = drawLines(pattern, progress, 1, 1, true);
   c.fillStyle = cssColor(voice);
   c.shadowColor = cssColor(voice);
   c.shadowBlur = unit * (.5 + vis.vocal * .9);
@@ -1417,7 +1485,114 @@ function drawKolam(dt) {
     c.fill();
   }
   c.shadowBlur = 0;
-  for (let i = touches.length - 1; i >= 0; i--) if (!touches[i].down) touches.splice(i, 1);
+  c.restore();
+}
+
+// --- Words ------------------------------------------------------------------------
+// The sung word lands big, then flies off to rest somewhere on the screen, smaller and in
+// the album's colours, so the song builds up into a poster of itself as it plays.
+
+const kin = { key: null, settled: [], active: null, activeKey: '', font: '' };
+
+function wordsArea(scale) {
+  const stage = $('stage').getBoundingClientRect(), portrait = innerHeight >= innerWidth;
+  const area = portrait
+    ? { x: stage.left + 4, y: stage.top + 46, w: stage.width - 8, h: stage.height - 52 }
+    : { x: stage.left, y: stage.top + 46, w: stage.width, h: stage.height - 52 };
+  return { x: area.x * scale, y: area.y * scale, w: area.w * scale, h: area.h * scale };
+}
+
+function settleWord(word, area, now, c) {
+  const random = Math.random;
+  const size = Math.min(area.w, area.h * 1.2) * (.045 + random() * .06);   // small enough to pile up without a jumble
+  const rot = random() < .2 ? (random() < .5 ? -1 : 1) * Math.PI / 2 : 0;
+  c.font = `800 ${size}px ${kin.font}`;
+  const across = c.measureText(word.text).width, tall = size * .95;
+  const bw = rot ? tall : across, bh = rot ? across : tall;
+  let best = null, least = Infinity;
+  for (let k = 0; k < 14; k++) {   // the emptiest of a few random spots
+    const x = area.x + bw / 2 + random() * Math.max(1, area.w - bw), y = area.y + bh / 2 + random() * Math.max(1, area.h - bh);
+    let overlap = 0;
+    for (const other of kin.settled.slice(-24)) {
+      overlap += Math.max(0, Math.min(x + bw / 2, other.x + other.bw / 2) - Math.max(x - bw / 2, other.x - other.bw / 2))
+        * Math.max(0, Math.min(y + bh / 2, other.y + other.bh / 2) - Math.max(y - bh / 2, other.y - other.bh / 2));
+    }
+    if (overlap < least) { least = overlap; best = { x, y }; }
+  }
+  const colours = [[.965, .94, .89], palette.voice, palette.music.map(v => v + (1 - v) * .35)];
+  kin.settled.push({
+    text: word.text, from: { x: word.x, y: word.y, size: word.size }, x: best.x, y: best.y, size, rot, bw, bh,
+    t0: now, alpha: .32 + random() * .28, colour: cssColor(colours[Math.floor(random() * 3)]), wobble: random(),
+  });
+  if (kin.settled.length > 32) kin.settled.splice(0, kin.settled.length - 32);
+}
+
+function drawWords() {
+  const canvas = $('kolam'), scale = Math.min(2, devicePixelRatio || 1);
+  const W = Math.round(canvas.clientWidth * scale), H = Math.round(canvas.clientHeight * scale);
+  if (!W || !H) return;
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+  const c = canvas.getContext('2d'), { voice, deep } = palette, calm = calmMotion.matches;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalAlpha = 1;
+  c.shadowBlur = 0;
+  const ground = c.createRadialGradient(W / 2, H * .4, 0, W / 2, H * .4, Math.max(W, H) * .8);
+  ground.addColorStop(0, cssColor(deep.map(v => Math.min(1, v * 2.2))));
+  ground.addColorStop(1, cssColor(deep.map(v => v * .55)));
+  c.fillStyle = ground;
+  c.fillRect(0, 0, W, H);
+
+  const now = performance.now() / 1000, area = wordsArea(scale);
+  if (kin.key !== view.key) Object.assign(kin, { key: view.key, settled: [], active: null, activeKey: '' });
+  if (!kin.font) kin.font = getComputedStyle(document.body).fontFamily;
+
+  // Follow the word being sung in the line below.
+  const els = [...$('vis-line').querySelectorAll('.word')];
+  const index = els.findIndex(el => el.classList.contains('active'));
+  const key = index >= 0 ? `${view.active}:${index}` : '';
+  if (key !== kin.activeKey) {
+    if (kin.active && kin.active.size) settleWord(kin.active, area, now, c);
+    const text = index >= 0 ? els[index].textContent.replace(/[.,!?;:"“”()]+/g, '').trim() : '';
+    kin.active = text ? { text, born: now } : null;
+    kin.activeKey = key;
+  }
+
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  const total = kin.settled.length;
+  kin.settled.forEach((word, i) => {
+    const p = calm ? 1 : Math.min(1, (now - word.t0) / .9), e = 1 - (1 - p) ** 3;
+    const x = word.from.x + (word.x - word.from.x) * e, y = word.from.y + (word.y - word.from.y) * e;
+    const size = word.from.size + (word.size - word.from.size) * e;
+    const age = (total - 1 - i) / 28;
+    c.save();
+    c.translate(x, y);
+    c.rotate(word.rot * e);
+    if (!calm) c.scale(1 + vis.kick * .06 * word.wobble, 1 + vis.kick * .06 * word.wobble);
+    c.globalAlpha = (1 - e) + e * word.alpha * Math.max(.15, 1 - age);
+    c.fillStyle = word.colour;
+    c.font = `800 ${size}px ${kin.font}`;
+    c.fillText(word.text, 0, 0);
+    c.restore();
+  });
+
+  const word = kin.active;
+  if (word) {
+    c.font = `800 100px ${kin.font}`;
+    const width = c.measureText(word.text).width || 1;
+    const size = Math.min(area.w * .86 / (width / 100), area.h * .34, 160 * scale);
+    const p = calm ? 1 : Math.min(1, (now - word.born) / .35), e = 1 - (1 - p) ** 3;
+    const grow = (1 + .35 * (1 - e)) * (1 + vis.vocal * .07);
+    Object.assign(word, { x: area.x + area.w / 2, y: area.y + area.h * .5, size: size * grow });
+    c.save();
+    c.globalAlpha = e;
+    c.fillStyle = 'rgb(246 244 239)';
+    c.shadowColor = cssColor(voice);
+    c.shadowBlur = 24 * scale * (.3 + vis.vocal);
+    c.font = `800 ${word.size}px ${kin.font}`;
+    c.fillText(word.text, word.x, word.y);
+    c.restore();
+  }
 }
 
 function setVisStyle(name) {
@@ -1426,12 +1601,13 @@ function setVisStyle(name) {
   showVisStyle(true);
 }
 
-const VIS_STYLES = ['rings', 'kolam'];
+const VIS_STYLES = ['rings', 'kolam', 'words'];
 let pagerAt = null, pagerTimer = 0;
 
 function showVisStyle(announce) {
-  document.body.classList.toggle('kolam-on', visStyle === 'kolam');
+  document.body.classList.toggle('paper-on', visStyle !== 'rings');
   $('stage').classList.toggle('kolam', visStyle === 'kolam');
+  $('stage').classList.toggle('words', visStyle === 'words');
   for (const button of $('vis-pager').querySelectorAll('button')) button.setAttribute('aria-selected', button.dataset.style === visStyle);
   fitVisLine();
   placePager(announce);
@@ -1487,7 +1663,11 @@ function drawVis(now) {
   showVisLine();
   readMusic(now, dt);
   blendPalette(dt);
-  if (visStyle === 'kolam') { drawKolam(dt); return; }
+  if (visStyle !== 'rings') {
+    if (visStyle === 'kolam') drawKolam(dt); else drawWords();
+    for (let i = touches.length - 1; i >= 0; i--) if (!touches[i].down) touches.splice(i, 1);
+    return;
+  }
   if (!scene.gl || !scene.w) return;
   drawInk(dt);
   stepField(dt);

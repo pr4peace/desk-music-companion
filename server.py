@@ -1037,9 +1037,12 @@ def ollama_chat(model, system, prompt, max_tokens):
 # writes the funny ones, and anything it says that isn't in the articles is dropped.
 
 WIKIPEDIA = "https://en.wikipedia.org/w/api.php"
+# Wikipedia asks apps to say who they are; generic names get rate-limited sooner.
+WIKI_AGENT = "DeskMusicCompanion/1.0 (https://github.com/pr4peace/desk-music-companion)"
 OLLAMA = "http://127.0.0.1:11434"
 WRITERS = ("qwen3.8:27b", "qwen3.5:9b", "gemma4:e4b")   # the first of these that is installed writes
 TIDBIT_COUNT = 5
+TIDBITS_AFTER = 20   # seconds into a song before its tidbits are researched
 SKIP_SECTIONS = ("cast", "track listing", "personnel", "see also", "references", "external links", "notes", "further reading", "filmography", "discography", "bibliography")
 MUSIC_WORDS = ("singer", "musician", "band", "composer", "rapper", "vocalist", "songwriter", "duo", "group", "producer", "playback")
 INTERESTING_WORDS = ("award", "won ", "first", "record", "inspired", "named", "famous", "originally", "debut", "nominated", "chart", "best", "reportedly", "banned", "only")
@@ -1055,7 +1058,7 @@ def base_title(title):
 
 def wiki_api(**params):
     params.update(format="json", formatversion=2)
-    request = urllib.request.Request(f"{WIKIPEDIA}?{urllib.parse.urlencode(params)}", headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(f"{WIKIPEDIA}?{urllib.parse.urlencode(params)}", headers={"User-Agent": WIKI_AGENT})
     for attempt in range(3):
         try:
             with urllib.request.urlopen(request, timeout=12) as response:
@@ -1445,17 +1448,22 @@ def build_state():
         status = "needs_setup"
     elif now_playing.settled(key, bool(player["duration"])):
         status = lyrics_store.ensure(key, player)["status"]
+    track = {
+        "key": key,
+        "name": (clean_video_title(player["name"]) if player["loose"] else "") or player["name"],
+        "artist": player["artist"],
+        "album": player["album"],
+        "duration": player["duration"],
+    }
+    # Research tidbits in the background once a song has played a while, so they're ready
+    # when the tab opens. Songs skipped in the first seconds aren't worth the work.
+    if player["state"] == "playing" and player["position"] > TIDBITS_AFTER:
+        tidbits.ensure(track)
     return {
         "state": player["state"],
         "position": player["position"],
         "age": 0,
-        "track": {
-            "key": key,
-            "name": (clean_video_title(player["name"]) if player["loose"] else "") or player["name"],
-            "artist": player["artist"],
-            "album": player["album"],
-            "duration": player["duration"],
-        },
+        "track": track,
         "lyrics": status,
         "art": player["art"],
     }
