@@ -1788,7 +1788,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/":
             self.send((ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
         elif url.path == "/api/state":
-            self.send_json(build_state())
+            # Which page the Mac is serving, so a phone left open for days can tell it should reload.
+            self.send_json({**build_state(), "page": str((ROOT / "index.html").stat().st_mtime_ns)})
         elif url.path == "/api/lyrics":
             entry = lyrics_store.get(query.get("key", [""])[0])
             if entry:

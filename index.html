@@ -2704,11 +2704,22 @@ async function keepAwake() {
 document.addEventListener('visibilitychange', keepAwake);
 keepAwake();
 
+// A page on the Home Screen stays open for days and never reloads by itself. When the Mac starts
+// serving a newer page, pick it up, though not while someone is using the controls.
+let pageVersion = null;
+function reloadIfNewer(version) {
+  if (!version) return;
+  pageVersion ??= version;
+  if (version !== pageVersion && $('timing').classList.contains('off')) location.reload();
+}
+
 async function poll() {
   const sent = performance.now();
   try {
     const res = await fetch('/api/state', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
-    apply(await res.json(), sent);
+    const state = await res.json();
+    reloadIfNewer(state.page);
+    apply(state, sent);
     failures = 0;
   } catch {
     failures++;
