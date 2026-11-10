@@ -142,7 +142,7 @@
   body.vis-on.paper-on #kolam { display: block; }
   body.vis-on.paper-on #vis { display: none; }
   body.vis-on.paper-on #backdrop { visibility: hidden; }
-  #stage.kolam #vis-lyric { top: 63%; }
+  #stage.vis.kolam #vis-lyric { top: 63%; }   /* below the pattern, not across it */
   #stage.words #vis-line { visibility: hidden; }   /* it still tracks the sung word, unseen */
   /* Which visual is showing, and that a sideways swipe changes it: the same glass and drop as the tabs. */
   #vis-pager {
@@ -281,6 +281,17 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 12px 30px rgba(0, 0, 0, .32);
     color: var(--text); font-size: 15px; font-weight: 620;
   }
+  /* VoiceOver takes double-tap for itself, so this button is how VoiceOver and keyboard users open the
+     controls. It stays out of sight until it has focus. */
+  #open-controls {
+    position: fixed; left: 50%; top: var(--pad-top); translate: -50% 0; z-index: 6;
+    width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+    border: 0; padding: 0; color: var(--text); font: inherit; font-size: 15px; font-weight: 620;
+  }
+  #open-controls:focus-visible {
+    width: auto; height: 44px; padding: 0 18px; clip-path: none; border-radius: 99px;
+    background: var(--panel); -webkit-backdrop-filter: blur(26px) saturate(1.8); backdrop-filter: blur(26px) saturate(1.8);
+  }
   /* A keyboard or switch user can see where they are. */
   button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
@@ -330,7 +341,7 @@
   #timing .seg button[aria-checked="true"] { color: var(--text); }
   #timing .nudge button { flex: none; width: 44px; height: 44px; font-size: 24px; font-weight: 500; }
   #timing .nudge #offset {
-    flex: 1; width: auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1; width: auto; min-width: 0; display: flex; justify-content: center; align-items: center; white-space: nowrap; overflow: hidden;
     font-size: 14px; font-weight: 620; font-variant-numeric: tabular-nums; color: var(--muted);
   }
   #timing .nudge #offset.moved { color: var(--text); }
@@ -367,7 +378,7 @@
     #gloss-roman { font-size: calc(var(--gs, 1) * clamp(19px, 3vw, 27px)); }
     #gloss-english { font-size: calc(var(--gs, 1) * clamp(17px, 2.5vw, 23px)); }
     #tb-head { font-size: clamp(34px, 6.2vw, 56px); }
-    #stage.kolam #vis-lyric, #stage.words #vis-lyric { top: 44px; left: 52%; }
+    #stage.vis.kolam #vis-lyric, #stage.vis.words #vis-lyric { top: 44px; left: 52%; }
     /* Sideways the controls stand over the side column, never across the line being sung. */
     #timing { left: var(--pad-x); right: auto; bottom: calc(var(--pad-bottom) + 62px); width: min(380px, 46vw); gap: 10px; padding: 12px; border-radius: 28px; }
     #now.split #timing { left: auto; right: var(--pad-x); }
@@ -402,6 +413,7 @@
       <div id="artist"></div>
     </div>
   </header>
+  <button id="open-controls" aria-controls="timing" aria-expanded="false">Show controls</button>
   <section id="stage" aria-live="off">
     <ol id="lines"></ol>
     <p id="note" hidden></p>
@@ -1219,7 +1231,7 @@ function screenPoint(event) {
 let press = null, lastTap = { at: -1e9, x: 0, y: 0 };
 
 function pointerDown(event) {
-  if (event.target.closest('#tabs, #timing, #vis-pager')) return;
+  if (event.target.closest('#tabs, #timing, #vis-pager, #open-controls')) return;
   press = { id: event.pointerId, x: event.clientX, y: event.clientY, at: event.timeStamp };
   if (activeTab !== 'vis') return;
   const [x, y] = screenPoint(event);
@@ -2369,8 +2381,17 @@ function showOffset() {
 
 // Closed controls are inert, so VoiceOver and the keyboard skip what can't be seen.
 function setControls(open) {
+  if (open) wake();
   $('timing').classList.toggle('off', !open);
   $('timing').inert = !open;
+  $('open-controls').setAttribute('aria-expanded', open);
+  $('open-controls').textContent = open ? 'Hide controls' : 'Show controls';
+}
+
+// The controls put themselves away, but never from under someone using them with VoiceOver or a keyboard.
+function closeWhenIdle() {
+  if ($('timing').contains(document.activeElement)) { timingTimer = setTimeout(closeWhenIdle, 4500); return; }
+  setControls(false);
 }
 
 // The first few times the controls stay up longer, so there's time to read what's there.
@@ -2379,7 +2400,7 @@ function revealTiming() {
   setControls(true);
   requestAnimationFrame(() => placeEnglishDrop(false));
   clearTimeout(timingTimer);
-  timingTimer = setTimeout(() => setControls(false), controlsOpens() <= 3 ? 9000 : 4500);
+  timingTimer = setTimeout(closeWhenIdle, controlsOpens() <= 3 ? 9000 : 4500);
 }
 
 function toggleControls() {
@@ -2429,8 +2450,21 @@ for (const button of $('vis-pager').querySelectorAll('button')) button.onclick =
 new ResizeObserver(() => placePager(false)).observe($('vis-pager'));
 $('earlier').onclick = () => changeOffset(STEP);
 $('later').onclick = () => changeOffset(-STEP);
+$('open-controls').onclick = () => {
+  const opening = $('timing').classList.contains('off');
+  toggleControls();
+  if (opening) $('play').focus();
+};
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || $('timing').classList.contains('off')) return;
+  clearTimeout(timingTimer);
+  setControls(false);
+  $('open-controls').focus();
+});
 $('now').addEventListener('pointerdown', pointerDown);
 document.addEventListener('pointerdown', wake, true);
+document.addEventListener('keydown', wake, true);
+document.addEventListener('focusin', wake);
 wake();
 $('now').addEventListener('pointermove', pointerMove);
 $('now').addEventListener('pointerup', pointerEnd);
