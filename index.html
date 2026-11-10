@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Desk Music Companion</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,15 +15,15 @@
   :root {
     --bg: #0b0b0d;
     --text: #f6f4ef;
-    --muted: rgba(246, 244, 239, .62);
+    --muted: rgba(246, 244, 239, .68);
     --accent: #f6c56f;
     --glass: rgba(255, 255, 255, .1);
     --drop: linear-gradient(180deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, .14));
     --map: rgba(246, 244, 239, .46);
     --panel: rgba(30, 28, 28, .52);
     --well: rgba(255, 255, 255, .09);
-    --line-idle: rgba(246, 244, 239, .26);
-    --line-past: rgba(246, 244, 239, .14);
+    --line-idle: rgba(246, 244, 239, .46);   /* the lines to come: readable from the desk */
+    --line-past: rgba(246, 244, 239, .22);   /* lines already sung stay quiet on purpose */
     --hair: rgba(246, 244, 239, .16);
     --pad-x: max(24px, env(safe-area-inset-left), env(safe-area-inset-right));
     --pad-top: max(22px, env(safe-area-inset-top));
@@ -104,10 +104,9 @@
   /* Words fill in as they are sung. The padding keeps tall script marks inside the fill. */
   .word {
     display: inline-block; padding: .24em .05em; margin: -.24em -.05em;
-    transform-origin: 0% 100%; transition: color .12s linear;   /* swells away from the screen edge */
+    transition: color .12s linear;
   }
-  .word:dir(rtl) { transform-origin: 100% 100%; }
-  #lines, #gloss-roman { --unsung: rgba(246, 244, 239, .42); }
+  #lines, #gloss-roman { --unsung: rgba(246, 244, 239, .5); }
   #vis-line { --unsung: rgba(246, 244, 239, .6); }
   #lines li.current .original .word, #gloss-roman .word, #vis-line .word { color: var(--unsung); }
   #lines li.current .word.sung, #gloss-roman .word.sung, #vis-line .word.sung { color: var(--text); }
@@ -115,7 +114,7 @@
     color: transparent; transition: none;
     background-image: linear-gradient(90deg, var(--text) calc(var(--p, 0) * 1%), var(--unsung) 0);
     -webkit-background-clip: text; background-clip: text;
-    transform: translateY(calc(var(--v, 0) * -.07em)) scale(calc(1 + var(--v, 0) * .06));
+    transform: translateY(calc(var(--v, 0) * -.06em));   /* lifts with the voice, never grows into its neighbours */
   }
   #lines li.current .word.active:dir(rtl), #gloss-roman .word.active:dir(rtl), #vis-line .word.active:dir(rtl) {
     background-image: linear-gradient(270deg, var(--text) calc(var(--p, 0) * 1%), var(--unsung) 0);
@@ -162,9 +161,11 @@
     color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; transition: color .25s ease;
   }
   #vis-pager button[aria-selected="true"] { color: var(--text); }
+  #vis-pager button::after { content: ""; position: absolute; inset: -6px 0; }   /* a 44px target around the slim pill */
   #stage.vis #vis-lyric { top: 44px; }
   /* Each tab's controls hold only what applies there. */
   #now:not([data-tab="lyrics"]) #timing .settings, #now[data-tab="tidbits"] #timing .nudge { display: none; }
+  #now[data-tab="tidbits"] { touch-action: pinch-zoom; }   /* sideways swipes page the tidbits */
 
   /* The picture fills the whole screen; everything else sits on top of it. */
   #vis { position: fixed; inset: 0; width: 100%; height: 100%; display: none; }
@@ -184,8 +185,8 @@
 
   /* The sung words scroll above; what they mean stays in one place below. */
   #gloss { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: .5em; padding-top: 14px; border-top: 1px solid var(--hair); }
-  #gloss-roman { font-size: calc(var(--gs, 1) * clamp(23px, 6.4vw, 34px)); font-weight: 700; line-height: 1.18; letter-spacing: -.01em; }
-  #gloss-english { font-size: calc(var(--gs, 1) * clamp(18px, 5vw, 26px)); font-weight: 460; line-height: 1.26; color: rgba(246, 244, 239, .82); }
+  #gloss-roman { font-size: calc(var(--gs, 1) * clamp(21px, 5.8vw, 31px)); font-weight: 600; line-height: 1.2; letter-spacing: -.005em; }
+  #gloss-english { font-size: calc(var(--gs, 1) * clamp(18px, 5vw, 26px)); font-weight: 460; line-height: 1.32; color: rgba(246, 244, 239, .82); }
   #gloss-roman:empty, #gloss-english:empty { display: none; }
   #gloss-wait { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--muted); }
   .spin { width: 16px; height: 16px; flex: none; animation: spin .9s linear infinite; }
@@ -242,8 +243,15 @@
   #tabs button[aria-selected="true"] { color: var(--text); }
 
   #foot { display: flex; flex-direction: column; gap: 10px; }
+  /* Ambient: left alone while a song plays, the chrome steps back so only the music and the words stay lit.
+     Slow out, quick back in, so a touch feels answered at once. */
+  #meta, #foot { transition: opacity .35s ease; }
+  .ambient #meta, .ambient #foot { transition-duration: 1.4s; }
+  .ambient #meta { opacity: .3; }
+  .ambient #foot { opacity: 0; pointer-events: none; }
+  .ambient #vis-pager:not(.awake) { opacity: 0; }
   #time { display: flex; align-items: center; gap: 10px; }
-  #elapsed, #remain { flex: none; min-width: 38px; font-size: 13px; font-weight: 620; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #elapsed, #remain { flex: none; min-width: 44px; font-size: 15px; font-weight: 620; color: var(--muted); font-variant-numeric: tabular-nums; }
   #remain { text-align: right; }
   /* A map of the song: brighter stretches are where the singing is. */
   #bar { position: relative; flex: 1; height: 5px; border-radius: 5px; background: var(--hair); overflow: hidden; }
@@ -268,9 +276,24 @@
 
   #offline {
     position: fixed; left: 50%; top: var(--pad-top); transform: translateX(-50%);
-    padding: 8px 14px; border-radius: 99px; white-space: nowrap;
-    background: rgba(30, 30, 34, .94); color: var(--text); font-size: 14px; font-weight: 600;
+    padding: 10px 16px; border-radius: 99px; white-space: nowrap; z-index: 6;
+    background: var(--panel); -webkit-backdrop-filter: blur(26px) saturate(1.8); backdrop-filter: blur(26px) saturate(1.8);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 12px 30px rgba(0, 0, 0, .32);
+    color: var(--text); font-size: 15px; font-weight: 620;
   }
+  /* A keyboard or switch user can see where they are. */
+  button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+  /* A one-time pointer to a gesture nobody would guess, in the tabs' glass. It retires once the gesture is used. */
+  #hint {
+    position: fixed; left: 50%; bottom: calc(var(--pad-bottom) + 98px); translate: -50% 10px; z-index: 5;
+    padding: 11px 18px; border-radius: 99px; white-space: nowrap; pointer-events: none;
+    font-size: 15px; font-weight: 620; color: var(--text); opacity: 0;
+    background: var(--panel); -webkit-backdrop-filter: blur(26px) saturate(1.8); backdrop-filter: blur(26px) saturate(1.8);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 12px 30px rgba(0, 0, 0, .32);
+    transition: opacity .3s ease, translate .5s var(--ease);
+  }
+  #hint.on { opacity: 1; translate: -50% 0; }
 
   /* The controls rise out of the footer, in the same glass as the tabs. */
   #timing {
@@ -296,25 +319,22 @@
   #timing #play svg { width: 36px; height: 36px; }
   #play .pause-icon, #play.is-playing .play-icon { display: none; }
   #play.is-playing .pause-icon { display: block; }
-  #timing .settings { display: flex; align-items: center; justify-content: center; gap: 8px; }
-  #timing .chips, #timing .nudge, #timing .english { display: flex; align-items: center; height: 48px; padding: 3px; border-radius: 99px; background: var(--well); }
-  #timing .chips { flex: none; }
-  #timing .nudge { min-width: 0; }
-  #timing button.mode { width: 52px; height: 42px; font-size: 15px; font-weight: 680; }
-  #timing .english { position: relative; flex: none; }
-  #timing .english .caption { padding: 0 6px 0 11px; font-size: 12px; font-weight: 720; color: var(--muted); }
-  #timing .english .drop {
+  #timing .settings { display: grid; gap: 8px; }
+  #timing .seg, #timing .nudge { position: relative; display: flex; align-items: center; height: 50px; padding: 3px; border-radius: 99px; background: var(--well); }
+  #timing .seg .caption { flex: 1; min-width: 0; padding: 0 8px 0 15px; font-size: 14px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #timing .seg .drop {
     position: absolute; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 99px; background: var(--drop);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 8px rgba(0, 0, 0, .22);
   }
-  #timing .english button { position: relative; height: 42px; padding: 0 12px; font-size: 14px; font-weight: 650; color: var(--muted); }
-  #timing .english button[aria-checked="true"] { color: var(--text); }
-  #timing button.mode[aria-pressed="false"] { color: var(--muted); }
-  #timing button.mode[aria-pressed="true"] {
-    background: var(--drop); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 8px rgba(0, 0, 0, .22);
+  #timing .seg button { position: relative; flex: none; height: 44px; padding: 0 14px; font-size: 15px; font-weight: 650; color: var(--muted); }
+  #timing .seg button[aria-checked="true"] { color: var(--text); }
+  #timing .nudge button { flex: none; width: 44px; height: 44px; font-size: 24px; font-weight: 500; }
+  #timing .nudge #offset {
+    flex: 1; width: auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 14px; font-weight: 620; font-variant-numeric: tabular-nums; color: var(--muted);
   }
-  #timing .nudge button { flex: none; width: 42px; height: 42px; font-size: 24px; font-weight: 500; }
-  #timing output { flex: 1; min-width: 0; text-align: center; white-space: nowrap; font-size: 13px; font-weight: 620; font-variant-numeric: tabular-nums; color: var(--muted); }
+  #timing .nudge #offset.moved { color: var(--text); }
+  #timing .nudge #offset.moved::after { content: "↺"; margin-left: 6px; color: var(--muted); }
 
   /* A phone lying sideways on the desk. */
   @media (orientation: landscape) and (max-height: 540px) {
@@ -328,7 +348,7 @@
     #stage { grid-row: 1; grid-column: 2; }
     #foot { grid-row: 2; grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 16px; }
     #time { flex: 1; min-width: 0; }
-    #tabs button { flex: none; height: 40px; }
+    #tabs button { flex: none; height: 44px; }
     #clock { font-size: clamp(90px, 42vmin, 190px); }
 
     /* Sideways there is width to spare but little height, so the same split runs left to right. */
@@ -344,18 +364,17 @@
     #now.split #stage { grid-row: 1 / 3; grid-column: 1; }
     #now.split #gloss { grid-row: 2; grid-column: 2; border-top: 0; padding-top: 4px; justify-content: center; }
     #now.split #foot { grid-row: 3; grid-column: 1 / -1; }
-    #gloss-roman { font-size: calc(var(--gs, 1) * clamp(21px, 3.3vw, 30px)); }
+    #gloss-roman { font-size: calc(var(--gs, 1) * clamp(19px, 3vw, 27px)); }
     #gloss-english { font-size: calc(var(--gs, 1) * clamp(17px, 2.5vw, 23px)); }
     #tb-head { font-size: clamp(34px, 6.2vw, 56px); }
     #stage.kolam #vis-lyric, #stage.words #vis-lyric { top: 44px; left: 52%; }
-    #timing {
-      left: 0; right: 0; bottom: calc(var(--pad-bottom) + 60px); width: fit-content; margin-inline: auto;
-      display: flex; align-items: center; gap: 18px; padding: 10px 14px; border-radius: 30px;
-    }
-    #timing .transport { gap: 8px; }
+    /* Sideways the controls stand over the side column, never across the line being sung. */
+    #timing { left: var(--pad-x); right: auto; bottom: calc(var(--pad-bottom) + 62px); width: min(380px, 46vw); gap: 10px; padding: 12px; border-radius: 28px; }
+    #now.split #timing { left: auto; right: var(--pad-x); }
+    #hint { bottom: calc(var(--pad-bottom) + 66px); }
+    #timing .transport { gap: 14px; }
     #timing .transport button { width: 52px; height: 52px; }
     #timing #play { width: 62px; height: 62px; }
-    #timing .nudge { flex: none; width: 216px; }
     #tb-text { font-size: clamp(18px, 2.7vw, 24px); margin-bottom: 10px; }
     #tidbits { gap: 10px; }
   }
@@ -422,7 +441,7 @@
       <button id="tab-tidbits" role="tab" aria-selected="false">Tidbits</button>
     </nav>
   </footer>
-  <div id="timing" class="off">
+  <div id="timing" class="off" inert>
     <div class="transport">
       <button id="previous" aria-label="Previous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2.5v14H6zM20 5v14L9.5 12z"/></svg></button>
       <button id="play" aria-label="Play or pause">
@@ -432,11 +451,14 @@
       <button id="next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5H18v14h-2.5zM4 5v14l10.5-7z"/></svg></button>
     </div>
     <div class="settings">
-      <div class="chips">
-        <button id="show-roman" class="mode" aria-label="Show transliteration" aria-pressed="true">Abc</button>
+      <div class="seg roman" role="radiogroup" aria-labelledby="roman-label">
+        <span class="caption" id="roman-label">In English letters</span>
+        <span class="drop" aria-hidden="true"></span>
+        <button data-roman="on" role="radio" aria-checked="true">On</button>
+        <button data-roman="off" role="radio" aria-checked="false">Off</button>
       </div>
-      <div class="english" role="radiogroup" aria-label="English translation">
-        <span class="caption" aria-hidden="true">EN</span>
+      <div class="seg english" role="radiogroup" aria-labelledby="english-label">
+        <span class="caption" id="english-label">Meaning</span>
         <span class="drop" aria-hidden="true"></span>
         <button data-english="off" role="radio" aria-checked="false">Off</button>
         <button data-english="literal" role="radio" aria-checked="true">Literal</button>
@@ -445,7 +467,7 @@
     </div>
     <div class="nudge">
       <button id="earlier" aria-label="Show lyrics earlier">−</button>
-      <output id="offset"></output>
+      <button id="offset" aria-live="polite"></button>
       <button id="later" aria-label="Show lyrics later">+</button>
     </div>
   </div>
@@ -458,19 +480,61 @@
 </section>
 
 <div id="offline" hidden>Can't reach your Mac. Retrying.</div>
+<p id="hint" role="status" aria-live="polite"></p>
 
 
 <script>
 const $ = id => document.getElementById(id);
 const POLL_MS = 1000;
 const IDLE_AFTER_PAUSE_MS = 5 * 60 * 1000;
+const AMBIENT_AFTER_MS = 8000;
+let ambientTimer = null;
+
+// Any touch, a new song or a pause brings the chrome back; it fades again after a while untouched.
+function wake() {
+  document.body.classList.remove('ambient');
+  clearTimeout(ambientTimer);
+  ambientTimer = setTimeout(rest, AMBIENT_AFTER_MS);
+}
+function rest() {
+  const busy = !$('timing').classList.contains('off') || !vis.playing || document.querySelector('#hint.on');
+  if (busy) { ambientTimer = setTimeout(rest, AMBIENT_AFTER_MS); return; }
+  document.body.classList.add('ambient');
+}
 const STEP = 0.25;
 
 const view = { key: null, status: null, lines: [], plain: false, offset: 0, active: -2, plainY: null, art: null, roman: {}, english: {}, natural: {}, translating: false, naturalizing: false, hasExtras: false };
 const clock = { pos: 0, at: performance.now(), running: false };
 let duration = 0, pausedSince = null, failures = 0, timingTimer = null;
 
+// Where the stage sits, read once per layout change rather than on every animation frame.
+let stageRect = null;
+const stageBox = () => stageRect || (stageRect = $('stage').getBoundingClientRect());
+
 function store(action) { try { return action(localStorage); } catch { return null; } }
+
+// One-time hints for the two gestures nobody would guess. Each shows at most three times,
+// once per visit, and never again once the gesture has been used.
+const HINT_SHOWS = 3;
+let hintTimer = null;
+const hinted = new Set();
+const hintSeen = name => Number(store(s => s.getItem('hint:' + name))) || 0;
+function offerHint(name, text) {
+  if (hinted.has(name) || hintSeen(name) >= HINT_SHOWS || $('hint').classList.contains('on') || !$('timing').classList.contains('off')) return;
+  hinted.add(name);
+  store(s => s.setItem('hint:' + name, String(hintSeen(name) + 1)));
+  const hint = $('hint');
+  hint.dataset.name = name;
+  hint.textContent = text;
+  hint.classList.add('on');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(hideHint, 6000);
+}
+function hideHint() { $('hint').classList.remove('on'); }
+function retireHint(name) {
+  store(s => s.setItem('hint:' + name, String(HINT_SHOWS)));
+  if ($('hint').dataset.name === name) hideHint();
+}
 const loadOffset = key => Number(store(s => s.getItem('offset:' + key))) || 0;
 const saveOffset = (key, v) => store(s => v ? s.setItem('offset:' + key, v) : s.removeItem('offset:' + key));
 const extras = {
@@ -535,10 +599,12 @@ function note(text) {
 }
 
 function showTab() {
+  stageRect = null;
   $('stage').classList.toggle('vis', activeTab === 'vis');
   $('stage').classList.toggle('tidbits', activeTab === 'tidbits');
   for (const name of ['lyrics', 'vis', 'tidbits']) $('tab-' + name).setAttribute('aria-selected', activeTab === name);
   $('now').dataset.tab = activeTab;
+  if (activeTab === 'vis') setTimeout(() => activeTab === 'vis' && offerHint('styles', 'Swipe sideways for more styles'), 1200);
   placeDrop(true);
   syncSplit();
   syncLevels();
@@ -1149,7 +1215,7 @@ function screenPoint(event) {
   return [event.clientX / (canvas.clientWidth || innerWidth), 1 - event.clientY / (canvas.clientHeight || innerHeight)];
 }
 
-// A touch only ever moves the picture. Controls open with a double tap, on any tab.
+// A touch only ever moves the picture. Controls open with a double tap, on any tab, and a single tap outside closes them.
 let press = null, lastTap = { at: -1e9, x: 0, y: 0 };
 
 function pointerDown(event) {
@@ -1192,10 +1258,23 @@ function pointerEnd(event) {
     else placePager(true);   // not far enough, or nothing that way: the drop springs back
     return;
   }
+  if (activeTab === 'tidbits' && Math.abs(sideways) > 60 && Math.abs(upright) < 80 && tidbit.status === 'ready' && tidbit.items.length > 1) {
+    press = null;
+    const count = tidbit.items.length;
+    showTidbit((tidbit.index + (sideways < 0 ? 1 : count - 1)) % count);
+    return;
+  }
   const still = Math.hypot(event.clientX - press.x, event.clientY - press.y) < 14;
   const quick = event.timeStamp - press.at < 350;
   press = null;
   if (!still || !quick) return;
+  // With the controls up, a tap anywhere else puts them away.
+  if (!$('timing').classList.contains('off')) {
+    lastTap.at = -1e9;
+    clearTimeout(timingTimer);
+    setControls(false);
+    return;
+  }
   if (event.timeStamp - lastTap.at < 340 && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 48) {
     lastTap.at = -1e9;
     toggleControls();
@@ -1356,7 +1435,7 @@ function drawKolam(dt) {
   c.fillStyle = ground;
   c.fillRect(0, 0, W, H);
 
-  const stage = $('stage').getBoundingClientRect(), portrait = innerHeight >= innerWidth;
+  const stage = stageBox(), portrait = innerHeight >= innerWidth;
   const side = (portrait ? Math.min(stage.width * .94, stage.height * .63 - 52) : Math.min(stage.height - 52, stage.width * .48)) * scale;
   const left = portrait ? (stage.left + stage.width / 2) * scale - side / 2 : stage.left * scale;
   const top = portrait ? (stage.top + 46) * scale : (stage.top + 46 + (stage.height - 46) / 2) * scale - side / 2;
@@ -1496,7 +1575,7 @@ function drawKolam(dt) {
 const kin = { key: null, settled: [], active: null, activeKey: '', font: '' };
 
 function wordsArea(scale) {
-  const stage = $('stage').getBoundingClientRect(), portrait = innerHeight >= innerWidth;
+  const stage = stageBox(), portrait = innerHeight >= innerWidth;
   const area = portrait
     ? { x: stage.left + 4, y: stage.top + 46, w: stage.width - 8, h: stage.height - 52 }
     : { x: stage.left, y: stage.top + 46, w: stage.width, h: stage.height - 52 };
@@ -1592,7 +1671,7 @@ function drawWords() {
     c.globalAlpha = e;
     c.fillStyle = 'rgb(246 244 239)';
     c.shadowColor = cssColor(voice);
-    c.shadowBlur = 24 * scale * (.3 + vis.vocal);
+    c.shadowBlur = calm ? 0 : scale * (8 + 12 * vis.vocal);   // a soft halo; a wide blur on big text costs every frame
     c.font = `800 ${word.size}px ${kin.font}`;
     c.fillText(word.text, word.x, word.y);
     c.restore();
@@ -1600,6 +1679,7 @@ function drawWords() {
 }
 
 function setVisStyle(name) {
+  retireHint('styles');
   visStyle = name;
   store(s => s.setItem('vis:style', name));
   showVisStyle(true);
@@ -1678,12 +1758,28 @@ function drawVis(now) {
   showField(dt);
 }
 
+// The language a line is written in, from its script, so VoiceOver reads it in the right voice.
+const SCRIPT_LANGS = [
+  [/[\u0B80-\u0BFF]/, 'ta'], [/[\u0900-\u097F]/, 'hi'], [/[\u0C00-\u0C7F]/, 'te'], [/[\u0D00-\u0D7F]/, 'ml'],
+  [/[\u0C80-\u0CFF]/, 'kn'], [/[\u0980-\u09FF]/, 'bn'], [/[\u0A00-\u0A7F]/, 'pa'], [/[\u0A80-\u0AFF]/, 'gu'],
+  [/[\u0600-\u06FF]/, 'ur'], [/[\u3040-\u30FF]/, 'ja'], [/[\uAC00-\uD7AF]/, 'ko'], [/[\u4E00-\u9FFF]/, 'zh'],
+];
+function langOf(text) {
+  for (const [pattern, code] of SCRIPT_LANGS) if (pattern.test(text)) return code;
+  return '';
+}
+function tagLang(element, code) {
+  if (code) element.lang = code; else element.removeAttribute('lang');
+}
+
 function fillLine(li, text) {
   li.dataset.text = text.trim();
+  const code = langOf(text);
   for (const part of ['original', 'roman', 'english']) {
     const span = document.createElement('span');
     span.className = part;
     span.dir = 'auto';
+    tagLang(span, part === 'english' ? 'en' : part === 'roman' ? code && `${code}-Latn` : code);
     if (part === 'original') setWords(span, text);
     li.append(span);
   }
@@ -1710,6 +1806,7 @@ function syncSplit() {
   const split = activeTab === 'lyrics' && view.lines.length > 0 && (view.hasExtras || ((view.translating || view.naturalizing) && extras.english));
   const was = $('now').classList.contains('split');
   $('now').classList.toggle('split', split);
+  stageRect = null;
   $('gloss').hidden = !split;
   if (split) showGloss();
   if (split !== was) placeActive(true);
@@ -1727,6 +1824,9 @@ function showGloss() {
   const changed = romanLine.textContent !== roman || englishLine.textContent !== english;
   if (!changed) return;
   if (romanLine.textContent !== roman) setWords(romanLine, roman);
+  const code = langOf(original);
+  tagLang(romanLine, code && `${code}-Latn`);
+  englishLine.lang = 'en';
   englishLine.textContent = english;
   const gloss = $('gloss');
   let scale = 1;
@@ -1741,13 +1841,13 @@ function showGloss() {
 function showExtras() {
   document.body.classList.toggle('no-roman', !extras.roman);
   document.body.classList.toggle('no-english', !extras.english);
-  $('show-roman').setAttribute('aria-pressed', extras.roman);
+  for (const button of document.querySelectorAll('#timing .roman button')) button.setAttribute('aria-checked', (button.dataset.roman === 'on') === extras.roman);
   const mode = !extras.english ? 'off' : extras.natural ? 'natural' : 'literal';
   for (const button of document.querySelectorAll('#timing .english button')) button.setAttribute('aria-checked', button.dataset.english === mode);
   placeEnglishDrop(true);
 }
 
-let englishAt = null;
+const segDropAt = new WeakMap();
 
 // Off, word for word, or written for meaning. Turning English off keeps the Natural choice for next time.
 function setEnglish(mode) {
@@ -1760,22 +1860,24 @@ function setEnglish(mode) {
   revealTiming();
 }
 
+// Each settings row's drop sits under its choice, and stretches across on the way to a new one.
 function placeEnglishDrop(animated) {
-  const group = document.querySelector('#timing .english'), drop = group.querySelector('.drop');
-  const on = group.querySelector('[aria-checked="true"]');
-  if (!on || !on.offsetWidth) return;
-  const x = on.offsetLeft, w = on.offsetWidth;
-  drop.style.width = w + 'px';
-  drop.style.transform = `translateX(${x}px)`;
-  if (animated && englishAt && englishAt.x !== x && !calmMotion.matches) {
-    const left = Math.min(englishAt.x, x), span = Math.max(englishAt.x + englishAt.w, x + w) - left;
-    drop.animate([
-      { transform: `translateX(${englishAt.x}px)`, width: englishAt.w + 'px' },
-      { transform: `translateX(${left}px) scaleY(.8)`, width: span + 'px', offset: .42 },
-      { transform: `translateX(${x}px)`, width: w + 'px' },
-    ], { duration: 460, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+  for (const group of document.querySelectorAll('#timing .seg')) {
+    const drop = group.querySelector('.drop'), on = group.querySelector('[aria-checked="true"]');
+    if (!on || !on.offsetWidth) continue;
+    const x = on.offsetLeft, w = on.offsetWidth, was = segDropAt.get(group);
+    drop.style.width = w + 'px';
+    drop.style.transform = `translateX(${x}px)`;
+    if (animated && was && was.x !== x && !calmMotion.matches) {
+      const left = Math.min(was.x, x), span = Math.max(was.x + was.w, x + w) - left;
+      drop.animate([
+        { transform: `translateX(${was.x}px)`, width: was.w + 'px' },
+        { transform: `translateX(${left}px) scaleY(.8)`, width: span + 'px', offset: .42 },
+        { transform: `translateX(${x}px)`, width: w + 'px' },
+      ], { duration: 460, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+    }
+    segDropAt.set(group, { x, w });
   }
-  englishAt = { x, w };
 }
 
 function toggleExtra(name) {
@@ -2062,6 +2164,8 @@ function showVisLine() {
     ], { duration: 260, easing: 'ease-in', fill: 'forwards' }).onfinish = () => leaving.remove();
   }
   setWords(element, text);
+  const code = langOf(original);
+  tagLang(element, text === original ? code : code && `${code}-Latn`);
   fitVisLine();
   if (text) {
     element.animate(calm ? [{ opacity: 0 }, { opacity: 1 }] : [
@@ -2165,6 +2269,8 @@ function showTrack(state) {
     $('tb-head').textContent = '';
     $('tb-flood').textContent = '';
     loadTidbits();
+    wake();
+    setTimeout(() => offerHint('controls', 'Double-tap for controls'), 7000);
   }
   const art = state.art || null;
   if (art !== view.art) {
@@ -2209,6 +2315,7 @@ function apply(state, sent) {
   showTrack(state);
 
   pausedSince = playing ? null : (pausedSince ?? Date.now());
+  if (vis.playing && !playing) wake();
   vis.playing = playing;
   $('play').classList.toggle('is-playing', playing);
   $('tag').textContent = 'Paused';
@@ -2254,20 +2361,36 @@ function driftIdle() {   // moves the always-on clock slightly so it can't burn 
 
 function showOffset() {
   const v = view.offset;
-  $('offset').textContent = v === 0 ? 'Timing: exact' : `Timing: ${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}s`;
+  const amount = String(Math.abs(v));   // 0.25, 0.5, 1
+  $('offset').textContent = v === 0 ? 'Lyrics on time' : `Lyrics ${amount} s ${v > 0 ? 'earlier' : 'later'}`;
+  $('offset').classList.toggle('moved', v !== 0);
+  $('offset').setAttribute('aria-label', v === 0 ? 'Lyrics on time' : `Lyrics ${amount} seconds ${v > 0 ? 'earlier' : 'later'}. Tap to put them back on time.`);
 }
 
+// Closed controls are inert, so VoiceOver and the keyboard skip what can't be seen.
+function setControls(open) {
+  $('timing').classList.toggle('off', !open);
+  $('timing').inert = !open;
+}
+
+// The first few times the controls stay up longer, so there's time to read what's there.
+const controlsOpens = () => Number(store(s => s.getItem('controls:opens'))) || 0;
 function revealTiming() {
-  $('timing').classList.remove('off');
+  setControls(true);
   requestAnimationFrame(() => placeEnglishDrop(false));
   clearTimeout(timingTimer);
-  timingTimer = setTimeout(() => $('timing').classList.add('off'), 4500);
+  timingTimer = setTimeout(() => setControls(false), controlsOpens() <= 3 ? 9000 : 4500);
 }
 
 function toggleControls() {
-  if ($('timing').classList.contains('off')) { revealTiming(); return; }
+  if ($('timing').classList.contains('off')) {
+    retireHint('controls');
+    store(s => s.setItem('controls:opens', String(controlsOpens() + 1)));
+    revealTiming();
+    return;
+  }
   clearTimeout(timingTimer);
-  $('timing').classList.add('off');
+  setControls(false);
 }
 
 function changeOffset(delta) {
@@ -2296,17 +2419,23 @@ $('tab-tidbits').onclick = () => setTab('tidbits');
 new ResizeObserver(() => placeDrop(false)).observe($('tabs'));
 document.addEventListener('visibilitychange', syncLevels);
 new ResizeObserver(sizeVis).observe($('vis'));
-$('show-roman').onclick = () => toggleExtra('roman');
+new ResizeObserver(() => { stageRect = null; }).observe($('stage'));
+for (const button of document.querySelectorAll('#timing .roman button')) {
+  button.onclick = () => { if ((button.dataset.roman === 'on') !== extras.roman) toggleExtra('roman'); else revealTiming(); };
+}
+$('offset').onclick = () => { if (view.offset) changeOffset(-view.offset); else revealTiming(); };
 for (const button of document.querySelectorAll('#timing .english button')) button.onclick = () => setEnglish(button.dataset.english);
 for (const button of $('vis-pager').querySelectorAll('button')) button.onclick = () => setVisStyle(button.dataset.style);
 new ResizeObserver(() => placePager(false)).observe($('vis-pager'));
 $('earlier').onclick = () => changeOffset(STEP);
 $('later').onclick = () => changeOffset(-STEP);
 $('now').addEventListener('pointerdown', pointerDown);
+document.addEventListener('pointerdown', wake, true);
+wake();
 $('now').addEventListener('pointermove', pointerMove);
 $('now').addEventListener('pointerup', pointerEnd);
 $('now').addEventListener('pointercancel', pointerEnd);
-addEventListener('resize', () => placeActive(true));
+addEventListener('resize', () => { stageRect = null; placeActive(true); });
 
 showOffset();
 showExtras();
