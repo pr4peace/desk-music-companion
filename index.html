@@ -137,7 +137,31 @@
 
   #stage.vis, #stage.tidbits { -webkit-mask-image: none; mask-image: none; }
   #stage.vis #lines, #stage.vis #note, #stage.tidbits #lines, #stage.tidbits #note,
-  #stage:not(.vis) #vis-note, #stage:not(.vis) #vis-lyric, #stage:not(.tidbits) #tidbits { display: none; }
+  #stage:not(.vis) #vis-note, #stage:not(.vis) #vis-lyric, #stage:not(.vis) #vis-pager, #stage:not(.tidbits) #tidbits { display: none; }
+  #kolam { position: fixed; inset: 0; width: 100%; height: 100%; display: none; }
+  body.vis-on.kolam-on #kolam { display: block; }
+  body.vis-on.kolam-on #vis { display: none; }
+  body.vis-on.kolam-on #backdrop { visibility: hidden; }
+  #stage.kolam #vis-lyric { top: 63%; }
+  /* Which visual is showing, and that a sideways swipe changes it: the same glass and drop as the tabs. */
+  #vis-pager {
+    position: absolute; left: 50%; bottom: 4px; translate: -50% 0; display: flex; padding: 3px; border-radius: 99px;
+    background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 8px 20px rgba(0, 0, 0, .26);
+    opacity: .5; transition: opacity .45s ease;
+  }
+  #vis-pager.awake { opacity: 1; }
+  #vis-pager .drop {
+    position: absolute; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 99px; background: var(--drop);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 2px 8px rgba(0, 0, 0, .24);
+  }
+  #vis-pager button {
+    position: relative; height: 32px; padding: 0 14px; border: 0; border-radius: 99px; background: transparent;
+    color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; transition: color .25s ease;
+  }
+  #vis-pager button[aria-selected="true"] { color: var(--text); }
+  #stage.vis #vis-lyric { bottom: 44px; }
+  #now:not([data-tab="vis"]) #timing .styles, #now[data-tab="vis"] #timing .chips:not(.styles) { display: none; }
 
   /* The picture fills the whole screen; everything else sits on top of it. */
   #vis { position: fixed; inset: 0; width: 100%; height: 100%; display: none; }
@@ -151,12 +175,27 @@
   .vis-gone { pointer-events: none; }
   .vis-gone .word { color: var(--text); }
   #vis-note {
-    position: absolute; left: 0; right: 0; bottom: 8px; text-align: center;
+    position: absolute; left: 0; right: 0; top: 8px; text-align: center;
     font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--muted);
   }
 
   /* The sung words scroll above; what they mean stays in one place below. */
   #gloss { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: .5em; padding-top: 14px; border-top: 1px solid var(--hair); }
+  /* Which English to show, in the same glass as everything else, right where the English is. */
+  #gloss-mode {
+    position: relative; flex: none; align-self: flex-start; display: flex; padding: 3px; border-radius: 99px; margin-bottom: 2px;
+    background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .16);
+  }
+  #gloss-mode .drop {
+    position: absolute; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 99px; background: var(--drop);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 2px 8px rgba(0, 0, 0, .24);
+  }
+  #gloss-mode button {
+    position: relative; height: 30px; padding: 0 13px; border: 0; border-radius: 99px; background: transparent;
+    color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; transition: color .25s ease;
+  }
+  #gloss-mode button[aria-selected="true"] { color: var(--text); }
   #gloss-roman { font-size: calc(var(--gs, 1) * clamp(23px, 6.4vw, 34px)); font-weight: 700; line-height: 1.18; letter-spacing: -.01em; }
   #gloss-english { font-size: calc(var(--gs, 1) * clamp(18px, 5vw, 26px)); font-weight: 460; line-height: 1.26; color: rgba(246, 244, 239, .82); }
   #gloss-roman:empty, #gloss-english:empty { display: none; }
@@ -274,6 +313,9 @@
   #timing .chips { flex: none; gap: 2px; }
   #timing .nudge { flex: 1; min-width: 0; }
   #timing button.mode { width: 52px; height: 42px; font-size: 15px; font-weight: 680; }
+  #timing button.mode.wide { width: auto; padding: 0 14px; }
+  #timing .settings { flex-wrap: wrap; justify-content: center; }
+  #timing .nudge { flex-basis: 100%; }
   #timing button.mode[aria-pressed="false"] { color: var(--muted); }
   #timing button.mode[aria-pressed="true"] {
     background: var(--drop); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 8px rgba(0, 0, 0, .22);
@@ -312,6 +354,7 @@
     #gloss-roman { font-size: calc(var(--gs, 1) * clamp(21px, 3.3vw, 30px)); }
     #gloss-english { font-size: calc(var(--gs, 1) * clamp(17px, 2.5vw, 23px)); }
     #tb-head { font-size: clamp(34px, 6.2vw, 56px); }
+    #stage.kolam #vis-lyric { top: 0; left: 52%; }
     #timing {
       left: 0; right: 0; bottom: calc(var(--pad-bottom) + 60px); width: fit-content; margin-inline: auto;
       display: flex; align-items: center; gap: 18px; padding: 10px 14px; border-radius: 30px;
@@ -319,7 +362,8 @@
     #timing .transport { gap: 8px; }
     #timing .transport button { width: 52px; height: 52px; }
     #timing #play { width: 62px; height: 62px; }
-    #timing .nudge { flex: none; width: 216px; }
+    #timing .settings { flex-wrap: nowrap; }
+    #timing .nudge { flex: none; flex-basis: auto; width: 216px; }
     #tb-text { font-size: clamp(18px, 2.7vw, 24px); margin-bottom: 10px; }
     #tidbits { gap: 10px; }
   }
@@ -336,6 +380,7 @@
 <body>
 <div id="backdrop"></div>
 <canvas id="vis" aria-hidden="true"></canvas>
+<canvas id="kolam" aria-hidden="true"></canvas>
 <div id="tb-flood" aria-hidden="true"></div>
 
 <main id="now" hidden>
@@ -351,6 +396,11 @@
     <p id="note" hidden></p>
     <div id="vis-lyric"><p id="vis-line" dir="auto"></p></div>
     <p id="vis-note" hidden></p>
+    <div id="vis-pager" role="tablist" aria-label="Visual style">
+      <span class="drop" aria-hidden="true"></span>
+      <button data-style="rings" role="tab" aria-selected="true">Rings</button>
+      <button data-style="kolam" role="tab" aria-selected="false">Kolam</button>
+    </div>
     <div id="tidbits">
       <div id="tb-load"><p id="tb-label"></p><span id="tb-track"><span id="tb-fill"></span></span></div>
       <div id="tb-show" hidden><h2 id="tb-head" dir="auto"></h2><p id="tb-text" dir="auto"></p><p id="tb-source"></p><div id="tb-dots"></div></div>
@@ -358,6 +408,11 @@
     </div>
   </section>
   <section id="gloss" hidden>
+    <div id="gloss-mode" role="tablist" aria-label="English translation style" hidden>
+      <span class="drop" aria-hidden="true"></span>
+      <button data-mode="literal" role="tab" aria-selected="true">Literal</button>
+      <button data-mode="natural" role="tab" aria-selected="false">Natural</button>
+    </div>
     <p id="gloss-roman" dir="auto"></p>
     <p id="gloss-english" dir="auto"></p>
     <p id="gloss-wait" hidden>
@@ -392,6 +447,11 @@
       <div class="chips">
       <button id="show-roman" class="mode" aria-label="Show transliteration" aria-pressed="true">Abc</button>
       <button id="show-english" class="mode" aria-label="Show English translation" aria-pressed="true">EN</button>
+        <button id="show-natural" class="mode wide" aria-label="Natural English, written for meaning" aria-pressed="false">Natural</button>
+      </div>
+      <div class="chips styles">
+        <button id="style-rings" class="mode wide" aria-label="Rings visual" aria-pressed="true">Rings</button>
+        <button id="style-kolam" class="mode wide" aria-label="Kolam visual" aria-pressed="false">Kolam</button>
       </div>
       <div class="nudge">
       <button id="earlier" aria-label="Show lyrics earlier">−</button>
@@ -417,7 +477,7 @@ const POLL_MS = 1000;
 const IDLE_AFTER_PAUSE_MS = 5 * 60 * 1000;
 const STEP = 0.25;
 
-const view = { key: null, status: null, lines: [], plain: false, offset: 0, active: -2, plainY: null, art: null, roman: {}, english: {}, translating: false, hasExtras: false };
+const view = { key: null, status: null, lines: [], plain: false, offset: 0, active: -2, plainY: null, art: null, roman: {}, english: {}, natural: {}, translating: false, naturalizing: false, hasExtras: false };
 const clock = { pos: 0, at: performance.now(), running: false };
 let duration = 0, pausedSince = null, failures = 0, timingTimer = null;
 
@@ -427,6 +487,7 @@ const saveOffset = (key, v) => store(s => v ? s.setItem('offset:' + key, v) : s.
 const extras = {
   roman: store(s => s.getItem('show:roman')) !== '0',
   english: store(s => s.getItem('show:english')) !== '0',
+  natural: store(s => s.getItem('show:natural')) === '1',
 };
 let activeTab = ['vis', 'tidbits'].includes(store(s => s.getItem('tab'))) ? store(s => s.getItem('tab')) : 'lyrics';
 const vis = {
@@ -468,6 +529,8 @@ function clearLyrics() {
   $('stage').classList.remove('plain', 'extras');
   view.roman = {};
   view.english = {};
+  view.natural = {};
+  view.naturalizing = false;
   view.translating = false;
   view.hasExtras = false;
   view.lines = [];
@@ -491,7 +554,7 @@ function showTab() {
   syncSplit();
   syncLevels();
   if (activeTab === 'lyrics') placeActive(true);
-  else if (activeTab === 'vis') fitVisLine();
+  else if (activeTab === 'vis') { fitVisLine(); placePager(false); wakePager(); }
   else loadTidbits();
 }
 
@@ -941,10 +1004,6 @@ function stepField(dt) {
 
 function showField(dt) {
   const gl = scene.gl, canvas = $('vis'), { program, uniforms: u } = scene.show;
-  const blend = Math.min(1, dt * 1.6);
-  for (const name of ['voice', 'music', 'deep']) {
-    palette[name] = palette[name].map((value, i) => value + (palette.goal[name][i] - value) * blend);
-  }
   vis.scrimOn += (vis.scrimTarget - vis.scrimOn) * Math.min(1, dt * 5);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1105,7 +1164,7 @@ function screenPoint(event) {
 let press = null, lastTap = { at: -1e9, x: 0, y: 0 };
 
 function pointerDown(event) {
-  if (event.target.closest('#tabs, #timing')) return;
+  if (event.target.closest('#tabs, #timing, #vis-pager, #gloss-mode')) return;
   press = { id: event.pointerId, x: event.clientX, y: event.clientY, at: event.timeStamp };
   if (activeTab !== 'vis') return;
   const [x, y] = screenPoint(event);
@@ -1115,6 +1174,14 @@ function pointerDown(event) {
 }
 
 function pointerMove(event) {
+  if (press && press.id === event.pointerId && activeTab === 'vis') {
+    const sideways = event.clientX - press.x, upright = event.clientY - press.y;
+    if (Math.abs(sideways) > 12 && Math.abs(sideways) > Math.abs(upright)) {
+      press.dragged = true;
+      wakePager();
+      placePager(false, Math.max(-1, Math.min(1, -sideways / 140)));
+    }
+  }
   const touch = touches.find(t => t.id === event.pointerId && t.down);
   if (!touch) return;
   const [x, y] = screenPoint(event);
@@ -1128,6 +1195,14 @@ function pointerEnd(event) {
   const touch = touches.find(t => t.id === event.pointerId && t.down);
   if (touch) touch.down = false;
   if (event.type !== 'pointerup' || !press || press.id !== event.pointerId) return;
+  const sideways = event.clientX - press.x, upright = event.clientY - press.y;
+  if (activeTab === 'vis' && press.dragged) {
+    const next = VIS_STYLES[VIS_STYLES.indexOf(visStyle) + (sideways < 0 ? 1 : -1)];
+    press = null;
+    if (Math.abs(sideways) > 60 && Math.abs(upright) < 80 && next) setVisStyle(next);
+    else placePager(true);   // not far enough, or nothing that way: the drop springs back
+    return;
+  }
   const still = Math.hypot(event.clientX - press.x, event.clientY - press.y) < 14;
   const quick = event.timeStamp - press.at < 350;
   press = null;
@@ -1147,6 +1222,275 @@ function showVisNote(now) {
   $('vis-note').hidden = !text;
 }
 
+function blendPalette(dt) {
+  const blend = Math.min(1, dt * 1.6);
+  for (const name of ['voice', 'music', 'deep']) {
+    palette[name] = palette[name].map((value, i) => value + (palette.goal[name][i] - value) * blend);
+  }
+}
+
+// --- Kolam ------------------------------------------------------------------------
+// The patterns drawn at South Indian doorsteps: lines looping around a grid of dots, with
+// four-way symmetry. Each verse gets its own pattern, drawn while it is sung.
+
+let visStyle = store(s => s.getItem('vis:style')) === 'kolam' ? 'kolam' : 'rings';
+const kolam = { key: null, cache: new Map(), groups: [], groupsKey: '', shown: -1, current: null, previous: null, fade: 0 };
+
+function seeded(text) {
+  let h = 1779033703 ^ text.length;
+  for (let i = 0; i < text.length; i++) { h = Math.imul(h ^ text.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+  return () => {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+
+// A mirror curve: the line runs diagonally between the midpoints of the cells around each dot,
+// passing straight through or bouncing off mirrors. Mirrors are placed symmetrically, so the
+// whole pattern has the symmetry of a square.
+function buildKolam(seedText) {
+  const random = seeded(seedText);
+  const n = 5 + Math.floor(random() * 3), N = n * 2;
+  const density = .28 + random() * .3;
+  const decided = new Map();
+  const mirrored = (x, y) => {
+    if (x <= 0 || y <= 0 || x >= N || y >= N) return true;
+    const key = [[x, y], [N - x, y], [x, N - y], [N - x, N - y], [y, x], [N - y, x], [y, N - x], [N - y, N - x]]
+      .map(p => p.join(',')).sort()[0];
+    if (!decided.has(key)) decided.set(key, random() < density);
+    return decided.get(key);
+  };
+  const used = new Set();
+  const segment = (x, y, dx, dy) => { const a = `${x},${y}`, b = `${x + dx},${y + dy}`; return a < b ? a + '|' + b : b + '|' + a; };
+  const loops = [];
+  for (let y = 0; y <= N; y++) {
+    for (let x = 0; x <= N; x++) {
+      if ((x + y) % 2 === 0) continue;
+      for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        if (x + dx < 0 || x + dx > N || y + dy < 0 || y + dy > N || used.has(segment(x, y, dx, dy))) continue;
+        const points = [];
+        let px = x, py = y, ddx = dx, ddy = dy;
+        for (let guard = 0; guard < 4 * N * N + 8; guard++) {
+          used.add(segment(px, py, ddx, ddy));
+          points.push([px, py]);
+          px += ddx;
+          py += ddy;
+          if (mirrored(px, py)) { if (px % 2 === 0) ddx = -ddx; else ddy = -ddy; }
+          if (px === x && py === y && ddx === dx && ddy === dy) break;
+        }
+        loops.push(points);
+      }
+    }
+  }
+  return {
+    n,
+    loops: loops.map(points => {
+      const m = points.length, out = [];
+      for (let i = 0; i < m; i++) {   // rounds each bounce into a curve, the way a hand draws it
+        const p0 = points[(i - 1 + m) % m], p1 = points[i], p2 = points[(i + 1) % m];
+        const a = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2], b = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+        for (let step = 0; step < 6; step++) {
+          const t = step / 6, u = 1 - t;
+          out.push([(u * u * a[0] + 2 * u * t * p1[0] + t * t * b[0]) / N, (u * u * a[1] + 2 * u * t * p1[1] + t * t * b[1]) / N]);
+        }
+      }
+      const top = out.reduce((best, p, i) => (p[1] < out[best][1] ? i : best), 0);
+      const pts = [...out.slice(top), ...out.slice(0, top)];
+      pts.push(pts[0]);
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      return { pts, cum, total: cum[cum.length - 1] };
+    }),
+  };
+}
+
+// Verses: lines that follow on from each other, at most four to a pattern.
+function kolamGroups() {
+  const key = `${view.key}:${view.lines.length}`;
+  if (kolam.groupsKey === key) return kolam.groups;
+  const lines = view.lines.filter(line => line.text && line.text.trim());
+  const groups = [];
+  let group = null;
+  lines.forEach((line, i) => {
+    const next = lines[i + 1];
+    const end = Math.min(next ? next.t : line.t + 5, line.t + 6);
+    if (!group || line.t - group.end >= 2.5 || group.count >= 4) { group = { start: line.t, end, count: 0 }; groups.push(group); }
+    group.end = end;
+    group.count++;
+  });
+  kolam.groupsKey = key;
+  kolam.groups = groups;
+  return groups;
+}
+
+function drawKolam(dt) {
+  const canvas = $('kolam');
+  const scale = Math.min(2, devicePixelRatio || 1);
+  const W = Math.round(canvas.clientWidth * scale), H = Math.round(canvas.clientHeight * scale);
+  if (!W || !H) return;
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+  const c = canvas.getContext('2d');
+  const { voice, music, deep } = palette, calm = calmMotion.matches;
+
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalAlpha = 1;
+  c.shadowBlur = 0;
+  const ground = c.createRadialGradient(W / 2, H * .42, 0, W / 2, H * .42, Math.max(W, H) * .8);
+  ground.addColorStop(0, cssColor(deep.map(v => Math.min(1, v * 2.2))));
+  ground.addColorStop(1, cssColor(deep.map(v => v * .55)));
+  c.fillStyle = ground;
+  c.fillRect(0, 0, W, H);
+
+  const stage = $('stage').getBoundingClientRect(), portrait = innerHeight >= innerWidth;
+  const side = (portrait ? Math.min(stage.width * .94, stage.height * .6) : Math.min(stage.height * .96, stage.width * .48)) * scale;
+  const left = portrait ? (stage.left + stage.width / 2) * scale - side / 2 : stage.left * scale;
+  const top = portrait ? (stage.top + stage.height * .02) * scale : (stage.top + stage.height / 2) * scale - side / 2;
+
+  if (kolam.key !== view.key) Object.assign(kolam, { key: view.key, cache: new Map(), shown: -1, current: null, previous: null, fade: 0 });
+  const t = Math.max(0, position()) + view.offset;
+  const groups = kolamGroups();
+  let index = 0, progress = 0;
+  if (groups.length) {
+    groups.forEach((group, i) => { if (group.start <= t) index = i; });
+    const group = groups[index];
+    progress = t < group.start ? 0 : (t - group.start) / Math.max(1, group.end - group.start) * 1.04;
+  } else {
+    index = Math.floor(t / 24);
+    progress = (t % 24) / 20;
+  }
+  progress = Math.min(1, Math.max(0, progress));
+  const seedKey = `${view.key}:${index}`;
+  if (!kolam.cache.has(seedKey)) kolam.cache.set(seedKey, buildKolam(seedKey));
+  if (index !== kolam.shown) {
+    if (kolam.current) { kolam.previous = kolam.current.pattern; kolam.fade = 1; }
+    kolam.shown = index;
+  }
+  kolam.current = { pattern: kolam.cache.get(seedKey) };
+  kolam.fade = Math.max(0, kolam.fade - dt * 1.1);
+
+  const cream = 'rgb(246 240 228)';
+  const glow = cssColor(music);
+  const drawLines = (pattern, amount, alpha, grow) => {
+    const unit = side / (pattern.n * 2), heads = [];
+    const cx = left + side / 2, cy = top + side / 2;
+    const at = ([x, y]) => [cx + (left + x * side - cx) * grow, cy + (top + y * side - cy) * grow];
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    for (const [width, colour, opacity] of [[unit * .3, glow, .22], [unit * (.085 + vis.vocal * .03), cream, .9 + vis.kick * .1]]) {
+      c.strokeStyle = colour;
+      c.lineWidth = width * grow;
+      c.globalAlpha = alpha * opacity;
+      for (const loop of pattern.loops) {
+        const target = amount * loop.total;
+        if (target <= 0) continue;
+        c.beginPath();
+        c.moveTo(...at(loop.pts[0]));
+        let i = 1;
+        for (; i < loop.pts.length && loop.cum[i] <= target; i++) c.lineTo(...at(loop.pts[i]));
+        if (i < loop.pts.length) {
+          const f = (target - loop.cum[i - 1]) / Math.max(1e-6, loop.cum[i] - loop.cum[i - 1]);
+          const a = loop.pts[i - 1], b = loop.pts[i];
+          const end = at([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+          c.lineTo(...end);
+          if (colour === cream) heads.push(end);
+        }
+        c.stroke();
+      }
+    }
+    return heads;
+  };
+
+  if (kolam.previous && kolam.fade > 0) drawLines(kolam.previous, 1, kolam.fade * kolam.fade, calm ? 1 : 1 + (1 - kolam.fade) * .08);
+
+  // The dots: the beat moves out from the centre; a finger lights the ones under it.
+  const pattern = kolam.current.pattern, N = pattern.n * 2, unit = side / N;
+  c.fillStyle = cream;
+  for (let y = 1; y < N; y += 2) {
+    for (let x = 1; x < N; x += 2) {
+      const px = left + x * unit, py = top + y * unit;
+      const reach = Math.hypot(x - N / 2, y - N / 2) / (N / 2);
+      let lit = calm ? 0 : vis.kick * Math.max(0, 1 - reach * .7);
+      for (const touch of touches) if (touch.down && Math.hypot(px - touch.x * W, py - (1 - touch.y) * H) < unit * 1.7) lit = 1;
+      c.globalAlpha = .42 + lit * .55;
+      c.beginPath();
+      c.arc(px, py, unit * (.06 + lit * .05), 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+
+  const heads = drawLines(pattern, progress, 1, 1);
+  c.fillStyle = cssColor(voice);
+  c.shadowColor = cssColor(voice);
+  c.shadowBlur = unit * (.5 + vis.vocal * .9);
+  c.globalAlpha = 1;
+  for (const [x, y] of heads) {
+    c.beginPath();
+    c.arc(x, y, unit * (.07 + vis.vocal * .06), 0, Math.PI * 2);
+    c.fill();
+  }
+  c.shadowBlur = 0;
+  for (let i = touches.length - 1; i >= 0; i--) if (!touches[i].down) touches.splice(i, 1);
+}
+
+function setVisStyle(name) {
+  visStyle = name;
+  store(s => s.setItem('vis:style', name));
+  showVisStyle(true);
+}
+
+const VIS_STYLES = ['rings', 'kolam'];
+let pagerAt = null, pagerTimer = 0;
+
+function showVisStyle(announce) {
+  document.body.classList.toggle('kolam-on', visStyle === 'kolam');
+  $('stage').classList.toggle('kolam', visStyle === 'kolam');
+  $('style-rings').setAttribute('aria-pressed', visStyle === 'rings');
+  $('style-kolam').setAttribute('aria-pressed', visStyle === 'kolam');
+  for (const button of $('vis-pager').querySelectorAll('button')) button.setAttribute('aria-selected', button.dataset.style === visStyle);
+  fitVisLine();
+  placePager(announce);
+  if (announce) wakePager();
+}
+
+function wakePager() {
+  $('vis-pager').classList.add('awake');
+  clearTimeout(pagerTimer);
+  pagerTimer = setTimeout(() => $('vis-pager').classList.remove('awake'), 3500);
+}
+
+// The drop sits on the current style. While a finger drags sideways it stretches toward the
+// style it would land on, or barely gives at the end of the row.
+function placePager(animated, drag = 0) {
+  const pager = $('vis-pager'), drop = pager.querySelector('.drop');
+  const buttons = [...pager.querySelectorAll('button')];
+  const index = VIS_STYLES.indexOf(visStyle), on = buttons[index];
+  if (!on || !on.offsetWidth) return;
+  let x = on.offsetLeft, w = on.offsetWidth;
+  if (drag) {
+    const target = buttons[index + Math.sign(drag)], pull = Math.min(1, Math.abs(drag));
+    if (!target) {
+      x += Math.sign(drag) * pull * 6;
+    } else if (target.offsetLeft > x) {
+      w += (target.offsetLeft + target.offsetWidth - x - w) * pull * .55;
+    } else {
+      const reach = (x - target.offsetLeft) * pull * .55;
+      x -= reach;
+      w += reach;
+    }
+  }
+  drop.style.width = w + 'px';
+  drop.style.transform = `translateX(${x}px)` + (drag ? ` scaleY(${1 - Math.min(1, Math.abs(drag)) * .14})` : '');
+  if (animated && pagerAt && !calmMotion.matches && (pagerAt.x !== x || pagerAt.w !== w)) {
+    drop.animate([
+      { transform: `translateX(${pagerAt.x}px)`, width: pagerAt.w + 'px' },
+      { transform: `translateX(${x}px)`, width: w + 'px' },
+    ], { duration: 420, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+  }
+  pagerAt = { x, w };
+}
+
 function drawVis(now) {
   if (!visWanted()) { vis.running = false; return; }
   requestAnimationFrame(drawVis);
@@ -1158,6 +1502,8 @@ function drawVis(now) {
   showVisNote(now);
   showVisLine();
   readMusic(now, dt);
+  blendPalette(dt);
+  if (visStyle === 'kolam') { drawKolam(dt); return; }
   if (!scene.gl || !scene.w) return;
   drawInk(dt);
   stepField(dt);
@@ -1180,7 +1526,7 @@ function applyExtras() {
   for (const li of $('lines').children) {
     if (!li.dataset.text) continue;
     const roman = view.roman[li.dataset.text] || '';
-    const english = view.english[li.dataset.text] || '';
+    const english = (extras.natural && view.natural[li.dataset.text]) || view.english[li.dataset.text] || '';
     const romanLine = li.querySelector('.roman');
     if (romanLine.textContent !== roman) setWords(romanLine, roman);
     li.querySelector('.english').textContent = english;
@@ -1193,7 +1539,7 @@ function applyExtras() {
 }
 
 function syncSplit() {
-  const split = activeTab === 'lyrics' && view.lines.length > 0 && (view.hasExtras || (view.translating && extras.english));
+  const split = activeTab === 'lyrics' && view.lines.length > 0 && (view.hasExtras || ((view.translating || view.naturalizing) && extras.english));
   const was = $('now').classList.contains('split');
   $('now').classList.toggle('split', split);
   $('gloss').hidden = !split;
@@ -1205,9 +1551,13 @@ function showGloss() {
   const line = view.lines[view.active];
   const original = line && line.text ? line.text.trim() : '';
   const roman = extras.roman ? view.roman[original] || '' : '';
-  const english = extras.english ? view.english[original] || '' : '';
+  const english = extras.english ? (extras.natural && view.natural[original]) || view.english[original] || '' : '';
   const romanLine = $('gloss-roman'), englishLine = $('gloss-english');
-  $('gloss-wait').hidden = !(view.translating && extras.english);
+  const offerModes = extras.english && (Object.keys(view.english).length > 0 || view.translating);
+  if ($('gloss-mode').hidden === offerModes) { $('gloss-mode').hidden = !offerModes; placeModeDrop(false); }
+  const waiting = view.translating || (view.naturalizing && extras.natural);
+  if (!view.translating && waiting) $('gloss-wait-text').textContent = 'Writing a natural translation…';
+  $('gloss-wait').hidden = !(waiting && extras.english);
   const changed = romanLine.textContent !== roman || englishLine.textContent !== english;
   if (!changed) return;
   if (romanLine.textContent !== roman) setWords(romanLine, roman);
@@ -1227,14 +1577,21 @@ function showExtras() {
   document.body.classList.toggle('no-english', !extras.english);
   $('show-roman').setAttribute('aria-pressed', extras.roman);
   $('show-english').setAttribute('aria-pressed', extras.english);
+  $('show-natural').setAttribute('aria-pressed', extras.english && extras.natural);
+  placeModeDrop(true);
 }
 
-function toggleExtra(name) {
-  extras[name] = !extras[name];
+function toggleExtra(name, quiet) {
+  extras[name] = name === 'natural' ? !(extras.natural && extras.english) : !extras[name];
+  if (name === 'natural' && extras.natural && !extras.english) {   // natural English needs English shown
+    extras.english = true;
+    store(s => s.setItem('show:english', '1'));
+  }
   store(s => s.setItem('show:' + name, extras[name] ? '1' : '0'));
+  if (name === 'natural' && extras.natural && view.key) loadNatural(view.key);
   showExtras();
   applyExtras();
-  revealTiming();
+  if (!quiet) revealTiming();
 }
 
 function setTranslating(on) {
@@ -1251,7 +1608,7 @@ async function loadTranslation(key) {
     if (view.key !== key) return;
     $('gloss-wait-text').textContent = data.status === 'failed' ? 'Translation is taking a moment…' : 'Translating…';
     setTranslating(data.status === 'loading' || data.status === 'failed');
-    if (data.status === 'ready') { view.english = data.lines; applyExtras(); return; }
+    if (data.status === 'ready') { view.english = data.lines; applyExtras(); if (extras.natural) loadNatural(key); return; }
     if (data.status === 'none') return;
     wait = data.status === 'loading' ? 1500 : 15000;
   } catch {
@@ -1259,6 +1616,52 @@ async function loadTranslation(key) {
     if (view.key === key) setTranslating(true);
   }
   if (view.key === key) setTimeout(() => loadTranslation(key), wait);
+}
+
+let modeAt = null;
+
+function placeModeDrop(animated) {
+  const pill = $('gloss-mode'), drop = pill.querySelector('.drop');
+  const natural = extras.natural && extras.english;
+  for (const button of pill.querySelectorAll('button')) button.setAttribute('aria-selected', (button.dataset.mode === 'natural') === natural);
+  const on = pill.querySelector('[aria-selected="true"]');
+  if (!on.offsetWidth) return;
+  const x = on.offsetLeft, w = on.offsetWidth;
+  drop.style.width = w + 'px';
+  drop.style.transform = `translateX(${x}px)`;
+  if (animated && modeAt && modeAt.x !== x && !calmMotion.matches) {
+    const left = Math.min(modeAt.x, x), span = Math.max(modeAt.x + modeAt.w, x + w) - left;
+    drop.animate([
+      { transform: `translateX(${modeAt.x}px)`, width: modeAt.w + 'px' },
+      { transform: `translateX(${left}px) scaleY(.8)`, width: span + 'px', offset: .42 },
+      { transform: `translateX(${x}px)`, width: w + 'px' },
+    ], { duration: 460, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+  }
+  modeAt = { x, w };
+}
+
+function setNaturalizing(on) {
+  if (view.naturalizing === on) return;
+  view.naturalizing = on;
+  syncSplit();
+  showGloss();
+}
+
+// The meaning-first translation, written on the Mac. The literal one stays up until it arrives.
+async function loadNatural(key) {
+  clearTimeout(view.naturalTimer);
+  if (view.key !== key || !extras.natural || Object.keys(view.natural).length) return;
+  let wait = 0;
+  try {
+    const res = await fetch(`/api/translation?key=${key}&style=natural`, { cache: 'no-store' });
+    const data = await res.json();
+    if (view.key !== key) return;
+    if (data.status === 'ready') { view.natural = data.lines; setNaturalizing(false); applyExtras(); return; }
+    if (data.status === 'loading') wait = 2000;
+    else if (data.status === 'failed') wait = 30000;
+  } catch { wait = 15000; }
+  setNaturalizing(wait === 2000);
+  if (wait && view.key === key && extras.natural) view.naturalTimer = setTimeout(() => loadNatural(key), wait);
 }
 
 // --- Tidbits -------------------------------------------------------------------
@@ -1709,6 +2112,14 @@ document.addEventListener('visibilitychange', syncLevels);
 new ResizeObserver(sizeVis).observe($('vis'));
 $('show-roman').onclick = () => toggleExtra('roman');
 $('show-english').onclick = () => toggleExtra('english');
+$('show-natural').onclick = () => toggleExtra('natural');
+for (const button of $('gloss-mode').querySelectorAll('button')) {
+  button.onclick = () => { if ((button.dataset.mode === 'natural') !== (extras.natural && extras.english)) toggleExtra('natural', true); };
+}
+$('style-rings').onclick = () => setVisStyle('rings');
+$('style-kolam').onclick = () => setVisStyle('kolam');
+for (const button of $('vis-pager').querySelectorAll('button')) button.onclick = () => setVisStyle(button.dataset.style);
+new ResizeObserver(() => placePager(false)).observe($('vis-pager'));
 $('earlier').onclick = () => changeOffset(STEP);
 $('later').onclick = () => changeOffset(-STEP);
 $('now').addEventListener('pointerdown', pointerDown);
@@ -1719,6 +2130,7 @@ addEventListener('resize', () => placeActive(true));
 
 showOffset();
 showExtras();
+showVisStyle(false);
 showTab();
 showClock();
 setInterval(showClock, 1000);

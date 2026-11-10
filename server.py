@@ -691,8 +691,10 @@ class LyricsStore:
         CACHE.mkdir(exist_ok=True)
         saved = CACHE / f"{key}.json"
         if saved.exists() and lyric_texts(json.loads(saved.read_text("utf-8"))) != lyric_texts(entry):
-            (CACHE / f"{key}.en.json").unlink(missing_ok=True)   # the old translation was of other words
+            (CACHE / f"{key}.en.json").unlink(missing_ok=True)   # the old translations were of other words
+            (CACHE / f"{key}.natural.json").unlink(missing_ok=True)
             translations.entries.pop(key, None)
+            naturals.entries.pop(key, None)
         saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
         self._set(key, entry)
 
@@ -928,6 +930,106 @@ class TranslationStore:
             saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
         with self.lock:
             self.entries[key] = entry
+
+
+class NaturalStore:
+    """English that says what each line means, written by the local model with the whole song as
+    context, starting from the literal translation. Optional: the literal one always shows first."""
+    FAILED_RETRY = 120
+    UNAVAILABLE_RETRY = 600
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.entries = {}
+
+    def ensure(self, key, lines, track):
+        saved = CACHE / f"{key}.natural.json"
+        with self.lock:
+            entry = self.entries.get(key)
+            if entry and time.time() < entry.get("retry_at", float("inf")):
+                return entry
+            if not entry and saved.exists():
+                entry = json.loads(saved.read_text("utf-8"))
+                self.entries[key] = entry
+                return entry
+        literal = translations.ensure(key, lines)
+        if literal.get("status") != "ready":
+            return {"status": "none" if literal.get("status") == "none" else "loading"}
+        with self.lock:
+            if self.entries.get(key, {}).get("status") == "loading":
+                return self.entries[key]
+            entry = {"status": "loading"}
+            self.entries[key] = entry
+        threading.Thread(target=self._write, args=(key, lines, literal["lines"], track, saved), daemon=True).start()
+        return entry
+
+    def _write(self, key, lines, literal, track, saved):
+        model = choose_writer()
+        if not model:
+            entry = {"status": "unavailable", "retry_at": time.time() + self.UNAVAILABLE_RETRY}
+        else:
+            try:
+                with tidbits.writing:   # one job at a time on the local model
+                    english = natural_lines(model, lines, literal, track)
+                entry = {"status": "ready" if english else "none", "lines": english}
+                CACHE.mkdir(exist_ok=True)
+                saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
+            except Exception as err:
+                print(f"natural translation failed: {err}", flush=True)
+                entry = {"status": "failed", "retry_at": time.time() + self.FAILED_RETRY}
+        with self.lock:
+            self.entries[key] = entry
+
+
+def natural_lines(model, lines, literal, track):
+    numbered = "\n".join(
+        f"{n}. {line} | {romanize(line) or line} | literal: {literal.get(line, line)}" for n, line in enumerate(lines, 1)
+    )
+    prompt = (
+        f"Song: \"{track.get('name', '')}\" by {track.get('artist', '')}.\n\n"
+        "Each numbered line shows the lyric, how it sounds, and a word-for-word machine translation.\n\n"
+        f"{numbered}\n\n"
+        "Write each line in natural English that says what it means and how it feels, the way a friend who knows "
+        "the language would explain it while the song plays. Read the whole song first, so repeated words, "
+        "idioms and metaphors make sense in context. Keep it short like a lyric, never longer than needed. "
+        "Keep names and words with no good English equivalent. One entry for every line, in order.\n"
+        'Reply with only JSON: {"lines": [{"n": 1, "en": "..."}]}'
+    )
+    reply = ollama_chat(model, "You translate song lyrics so they make sense to an English speaker. You never add lines or invent meaning that isn't there.", prompt, 3000)
+    rows = {}
+    decoder = json.JSONDecoder()
+    at = reply.find("{")
+    while at != -1:
+        try:
+            value, end = decoder.raw_decode(reply, at)
+        except ValueError:
+            at = reply.find("{", at + 1)
+            continue
+        for item in value.get("lines", [value]) if isinstance(value, dict) else []:
+            try:
+                n, text = int(item.get("n")), str(item.get("en", "")).strip()
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if 1 <= n <= len(lines) and text:
+                rows[n] = text
+        at = reply.find("{", end)
+    result = {}
+    for n, text in rows.items():
+        line = lines[n - 1]
+        if len(text) <= 3 * len(literal.get(line, line)) + 40 and text != line:
+            result[line] = text
+    return result
+
+
+def ollama_chat(model, system, prompt, max_tokens):
+    body = json.dumps({
+        "model": model, "stream": False, "think": False, "keep_alive": "30s",
+        "options": {"temperature": 0.4, "num_predict": max_tokens},
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+    }).encode("utf-8")
+    request = urllib.request.Request(f"{OLLAMA}/api/chat", data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=240) as response:
+        return json.load(response)["message"]["content"]
 
 
 # --- Tidbits -----------------------------------------------------------------
@@ -1317,6 +1419,7 @@ audio_levels = AudioLevels()
 safari_youtube = SafariYouTube()
 lyrics_store = LyricsStore()
 translations = TranslationStore()
+naturals = NaturalStore()
 tidbits = TidbitStore()
 
 
@@ -1480,7 +1583,11 @@ class Handler(BaseHTTPRequestHandler):
             key = query.get("key", [""])[0]
             entry = lyrics_store.get(key)
             lines = lyric_texts(entry) if entry else []
-            if lines:
+            if lines and query.get("style", [""])[0] == "natural":
+                track = build_state().get("track") or {}
+                result = naturals.ensure(key, lines, track if track.get("key") == key else {})
+                self.send_json({k: v for k, v in result.items() if k != "retry_at"})
+            elif lines:
                 result = translations.ensure(key, lines)
                 self.send_json({k: v for k, v in result.items() if k != "retry_at"})
             elif not entry or entry.get("status") == "loading":   # lyrics are still on their way

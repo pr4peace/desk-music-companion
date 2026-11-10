@@ -10,11 +10,11 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 
 | Tab | What it shows |
 |---|---|
-| **Lyrics** | The words scroll above; the current line's transliteration and English stay put below. In landscape the two sit side by side. |
-| **Visualizer** | A full-screen picture in the album's colours. Words give off light as they're sung, a ring reacts to the music, and touching the screen ripples and stirs it. |
-| **Tidbits** | Facts and a few jokes about the song, album, film and artist, with a loading bar the first time. |
+| **Lyrics** | The words scroll above; the current line's transliteration and English stay put below. In landscape the two sit side by side. A **Literal · Natural** switch picks word-for-word English or English written for meaning. |
+| **Visualizer** | Two styles; swipe sideways to switch. **Rings**: a full-screen picture in the album's colours, where the sung words give off light, a ring reacts to the music, and touch ripples and stirs it. **Kolam**: each verse draws its own South Indian kolam around a grid of dots, with the beat pulsing through the dots. |
+| **Tidbits** | Full-screen poster cards in the album's colours with facts and a few jokes about this song, from Wikipedia, with a loading bar the first time. |
 
-Double-tap anywhere for controls: play/pause, next, previous, show or hide the transliteration and English, and nudge the lyric timing.
+Double-tap anywhere for controls: play/pause, next, previous, show or hide the transliteration and English, choose Natural English, pick the visual style, and nudge the lyric timing.
 
 ## How it works
 
@@ -68,9 +68,9 @@ Keep the phone on the same Wi-Fi as the Mac. With a free Apple account the app s
 
 No Xcode? Open the address in Safari on the phone. Everything works except keeping the screen awake.
 
-### 3. Optional: better tidbits
+### 3. Optional: a local model
 
-Tidbits work without this, but the funny ones need a model running on your own Mac through [Ollama](https://ollama.com):
+Tidbits work without this, but the funny ones, and the **Natural** translation option (English that says what each line means instead of word for word), need a model running on your own Mac through [Ollama](https://ollama.com):
 
 ```bash
 ollama pull qwen3.5:9b
