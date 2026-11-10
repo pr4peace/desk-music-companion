@@ -10,11 +10,24 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 
 | Tab | What it shows |
 |---|---|
-| **Lyrics** | The words scroll above; the current line's transliteration and English stay put below. In landscape the two sit side by side. A **Literal · Natural** switch picks word-for-word English or English written for meaning. |
+| **Lyrics** | The words scroll above; the current line's transliteration and English stay put below. In landscape the two sit side by side. English can be word for word or written for meaning. |
 | **Visualizer** | Two styles; swipe sideways to switch. **Rings**: a full-screen picture in the album's colours, where the sung words give off light, a ring reacts to the music, and touch ripples and stirs it. **Kolam**: each verse draws its own South Indian kolam around a grid of dots, with the beat pulsing through the dots. |
 | **Tidbits** | Full-screen poster cards in the album's colours with facts and a few jokes about this song, from Wikipedia, with a loading bar the first time. |
 
-Double-tap anywhere for controls: play/pause, next, previous, show or hide the transliteration and English, choose Natural English, pick the visual style, and nudge the lyric timing.
+## How to use
+
+Leave the phone on the desk with the app open and play music on the Mac. Everything follows along by itself: the song, the art, the lyrics and the colours.
+
+- **Switch views** with the tabs at the bottom: Lyrics, Visualizer and Tidbits.
+- **Double-tap anywhere for controls,** and again to hide them (they also hide on their own after a few seconds). They only show what applies to the tab you're on:
+  - **Every tab:** previous, play/pause, next.
+  - **Lyrics:** **Abc** shows or hides the transliteration. **EN** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). The first time Natural runs on a song it takes 20 to 50 seconds, and the literal English shows until it's ready. **− / +** nudges the lyrics earlier or later if they drift; it's remembered for that song.
+  - **Visualizer:** playback, and the timing nudge for the sung line.
+- **Visualizer styles:** swipe sideways to switch between **Rings** and **Kolam**. The glass pill at the bottom shows which one is on, and you can tap its labels too. In Rings, touching the screen ripples and stirs the picture. In Kolam, it lights up the dots under your finger.
+- **Progress bar:** the brighter stretches are where the singing is, with elapsed and remaining time on either side.
+- **Tidbits:** open the tab and the first visit to a song researches it, with a loading bar. Cards then rotate on their own.
+- **Mac menu bar:** the ring icon shows what's playing and the phone's address, and can start, stop or restart the server.
+- **Lyrics feel off?** On the Mac, run `python3 tools/check_sync.py` during a sung part. It says whether the lyrics are in sync, early or late, or the wrong version.
 
 ## How it works
 
