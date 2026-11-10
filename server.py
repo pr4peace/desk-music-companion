@@ -1158,7 +1158,7 @@ WIKIPEDIA = "https://en.wikipedia.org/w/api.php"
 # Wikipedia asks apps to say who they are; generic names get rate-limited sooner.
 WIKI_AGENT = "DeskMusicCompanion/1.0 (https://github.com/pr4peace/desk-music-companion)"
 OLLAMA = "http://127.0.0.1:11434"
-WRITERS = ("qwen3.8:27b", "qwen3.5:9b", "gemma4:e4b")   # the first of these that is installed writes
+WRITERS = ("qwen3.5:9b", "gemma4:e4b")   # the first of these that is installed writes; kept small so the Mac stays responsive
 TIDBIT_COUNT = 5
 TIDBITS_AFTER = 20   # seconds into a song before its tidbits are researched
 SKIP_SECTIONS = ("cast", "track listing", "personnel", "see also", "references", "external links", "notes", "further reading", "filmography", "discography", "bibliography")

@@ -6,6 +6,67 @@
 
 Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone shows the album art and the lyrics in time with the music. Songs in Hindi, Tamil and other scripts get an English-letters version and an English translation. There's also a visualizer the lyrics are part of, and a tab of tidbits about the song, film or artist.
 
+## See it
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/lyrics.jpg" alt="Lyrics tab: Hindi lyrics with the sung words lit, and the current line in English letters and English below"></td>
+    <td width="33%"><img src="docs/screenshots/rings.jpg" alt="Visualizer, Rings style: rings in the album's colours around the sung line"></td>
+    <td width="33%"><img src="docs/screenshots/tidbits-funny.jpg" alt="Tidbits tab: a full-screen poster card with a joke about the band"></td>
+  </tr>
+  <tr>
+    <td><b>Lyrics.</b> Each word lights up as it's sung. Below, the same line in English letters and what it means.</td>
+    <td><b>Visualizer.</b> The song in the album's colours, with the line being sung in the middle.</td>
+    <td><b>Tidbits.</b> Facts and the odd joke about the song, as posters in its colours.</td>
+  </tr>
+</table>
+
+<sub>All screenshots use a made-up song, written for this README, so no one's real lyrics or album art appear here. Run <code>python3 tools/demo_server.py</code> to see it yourself.</sub>
+
+### A few ways to use it
+
+**Sing along to a song in a language you can't read.** A Hindi or Tamil song plays, and you can't read the script. Turn on **In English letters** and sing from the line under the lyrics. Pick **Meaning: Natural** to see what it means, written the way a person would say it, or **Literal** for word for word.
+
+**Learn a language through its songs.** Keep all three on: the script above, how it sounds below, and what it means under that. Line by line you start to match the letters to the sounds and the sounds to the words.
+
+**Something good to look at while you work.** Switch to the Visualizer and leave it be. After a few seconds without a touch the tabs fade away and the title dims, so only the music and the words are lit.
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/kolam.jpg" alt="Visualizer, Kolam style: a South Indian kolam drawn around a grid of dots, with the sung line below"></td>
+    <td width="33%"><img src="docs/screenshots/words.jpg" alt="Visualizer, Words style: the sung word large in the middle, earlier words scattered around it"></td>
+    <td width="33%"><img src="docs/screenshots/ambient.jpg" alt="The Kolam style left alone: the tabs have faded and the title is dimmed"></td>
+  </tr>
+  <tr>
+    <td><b>Kolam.</b> Each verse draws its own kolam. Beats ripple through the dots and light runs along the lines.</td>
+    <td><b>Words.</b> Each word lands big, then settles somewhere, until the song becomes a poster of itself.</td>
+    <td><b>Left alone.</b> After 8 seconds the tabs fade and the title dims. Touch the screen to bring them back.</td>
+  </tr>
+</table>
+
+**Find out about the song while it plays.** Open Tidbits for facts about the song, the film it's from and the people who made it. They're researched in the background, so they're usually ready by the time you look. Swipe sideways to flip through them.
+
+**Control the music without reaching for the Mac.** Double-tap anywhere for play, pause, next and previous. Tap anywhere outside to put the controls away.
+
+**Fix lyrics that run early or late.** In the controls, **−** and **+** move the lyrics a quarter second at a time, and the label tells you where they are: "Lyrics 0.5 s earlier". Tap the label to put them back on time.
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/controls.jpg" alt="The controls: play and skip buttons, In English letters On and Off, Meaning Off, Literal and Natural, and the timing nudge"></td>
+    <td width="33%"><img src="docs/screenshots/hint.jpg" alt="A glass hint above the tabs reading Double-tap for controls"></td>
+    <td width="33%"><img src="docs/screenshots/tidbits.jpg" alt="Tidbits: a dark poster card about the mridang"></td>
+  </tr>
+  <tr>
+    <td><b>Controls.</b> Only what applies to the tab you're on.</td>
+    <td><b>Hints.</b> The first few times, a hint shows the gesture. It stops once you've used it.</td>
+    <td><b>More tidbits.</b> Each card takes the album's colours, light or dark.</td>
+  </tr>
+</table>
+
+**Lying on its side.** Turn the phone sideways and the lyrics and their English letters and meaning sit side by side.
+
+<p><img src="docs/screenshots/landscape.jpg" alt="The Lyrics tab sideways: lyrics on the left, the current line in English letters and English on the right" width="66%"></p>
+
 ## What you get
 
 | Tab | What it shows |
@@ -19,13 +80,15 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 Leave the phone on the desk with the app open and play music on the Mac. Everything follows along by itself: the song, the art, the lyrics and the colours.
 
 - **Switch views** with the tabs at the bottom: Lyrics, Visualizer and Tidbits.
-- **Double-tap anywhere for controls,** and again to hide them (they also hide on their own after a few seconds). They only show what applies to the tab you're on:
+- **Double-tap anywhere for controls.** Tap anywhere outside them, or double-tap again, to put them away; they also go on their own after a few seconds. They only show what applies to the tab you're on:
   - **Every tab:** previous, play/pause, next.
-  - **Lyrics:** **Abc** shows or hides the transliteration. **EN** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). The first time Natural runs on a song it takes 20 to 50 seconds, and the literal English shows until it's ready. **− / +** nudges the lyrics earlier or later if they drift; it's remembered for that song.
+  - **Lyrics:** **In English letters** turns the transliteration on or off. **Meaning** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). The first time Natural runs on a song it takes 20 to 50 seconds, and the literal English shows until it's ready. **− / +** moves the lyrics a quarter second earlier or later if they drift, and the label says where they are; tap it to put them back on time. It's remembered for that song.
   - **Visualizer:** playback, and the timing nudge for the sung line.
+- **With VoiceOver,** double-tap belongs to VoiceOver, so swipe to the **Show controls** button just after the song title instead. With a keyboard, Tab gets you there and Escape closes the controls.
+- **Left alone,** after 8 seconds the tabs and progress bar fade and the title dims. Any touch, a new song or a pause brings them back.
 - **Visualizer styles:** swipe sideways to switch between **Rings**, **Kolam** and **Words**. The glass pill at the top shows which one is on, and its drop follows your finger as you swipe; you can tap its labels too. In Rings, touching the screen ripples and stirs the picture. In Kolam, it lights up the dots under your finger.
 - **Progress bar:** the brighter stretches are where the singing is, with elapsed and remaining time on either side.
-- **Tidbits:** they're researched in the background about 20 seconds into each song. If you open the tab sooner, a loading bar shows the progress. Cards rotate on their own.
+- **Tidbits:** they're researched in the background about 20 seconds into each song. If you open the tab sooner, a loading bar shows the progress. Cards rotate on their own; swipe sideways to flip through them.
 - **Mac menu bar:** the ring icon shows what's playing and the phone's address, and can start, stop or restart the server.
 - **Lyrics feel off?** On the Mac, run `python3 tools/check_sync.py` during a sung part. It says whether the lyrics are in sync, early or late, or the wrong version.
 
@@ -42,7 +105,7 @@ Mac                                                        iPhone on the desk
 └─ serves it all on port 8787  ───── your Wi-Fi ─────►
 ```
 
-The Mac runs `server.py`, which starts by itself at login. A small helper in the menu bar shows what's playing and can start or stop the server. The iPhone app is only a window onto the page the Mac serves, so nearly all the work happens in `server.py` and `index.html`.
+The Mac runs `server.py`, which starts by itself at login. A small helper in the menu bar shows what's playing and can start or stop the server. The phone simply opens the page the Mac serves, saved to its Home Screen, so all the work happens in `server.py` and `index.html`.
 
 ## Set it up
 
@@ -74,21 +137,14 @@ macOS will ask for a few permissions the first time each is needed:
 
 ### 2. On the iPhone
 
-1. Open `ios/DeskLyrics.xcodeproj` in Xcode.
-2. Under **Signing & Capabilities**, choose your own Team and change the Bundle Identifier to something of your own.
-3. Plug in the phone, pick it as the destination, and press Run.
-4. The app will say it can't reach your Mac. Type in the address from `install.sh` and tap Connect.
-
-Keep the phone on the same Wi-Fi as the Mac. With a free Apple account the app stops opening after 7 days until you run it from Xcode again.
-
-**Easier, with no Xcode and nothing that expires: add it to the Home Screen.**
+There's no app to install. The phone opens the page the Mac serves and keeps it on the Home Screen, so there's nothing to build, sign or renew.
 
 1. On the iPhone, open Safari and go to the address from `install.sh`, for example `http://Your-Mac.local:8787`.
 2. Tap Share, then **Add to Home Screen**. It gets its own icon and opens full screen, like an app.
 3. In Settings → Display & Brightness, set **Auto-Lock** to **Never**, so the screen stays on. (Web pages can only keep the screen awake on their own over HTTPS, and this one is plain HTTP on your Wi-Fi.)
 4. Optional: Settings → Accessibility → **Guided Access** locks the phone to this one screen. Triple-click the side button to start or stop it.
 
-The Xcode app above does the same thing and keeps the screen on by itself, but with a free Apple account it has to be reinstalled every 7 days.
+Keep the phone on the same Wi-Fi as the Mac. Any phone or tablet with a browser works the same way.
 
 ### 3. Optional: translate on your Mac
 
@@ -121,15 +177,18 @@ ollama pull qwen3.5:9b
 | `index.html` | The whole phone interface, in one file: layout, tabs, lyric animation, and the WebGL visualizer. |
 | `visualizer/` | Swift helper that measures the Mac's audio output. |
 | `mac/` | The menu bar helper and its icon. |
-| `ios/` | The iPhone app. |
 | `assets/make_icons.swift` | Draws every icon from code. Run it from the project folder to regenerate them. |
 | `install.sh` | Mac setup. Safe to run again. |
 | `translate/` | The optional on-Mac translators: `setup.sh` installs them, and the server runs `indictrans.py` or `nllb.py` depending on the language. |
 | `tools/check_sync.py` | Compares the lyric timing with the voice the Mac hears right now. Prints no lyrics. |
+| `tools/demo_server.py` | Serves the page with a made-up song, for working on the interface or taking screenshots. |
+| `docs/screenshots/` | The README's screenshots, all of the demo song. |
 
 After changing `index.html`, just reload the page. After changing `server.py`, choose **Restart Server** from the menu bar. Problems are logged to `~/Library/Logs/DeskLyrics.log`.
 
-To test the phone layout without a phone, run the app in the iOS Simulator; it reaches the Mac at `http://127.0.0.1:8787`.
+To test the phone layout without a phone, open `http://127.0.0.1:8787` in Safari in the iOS Simulator.
+
+To work on the interface without music playing, run `python3 tools/demo_server.py` and open `http://localhost:8790`. It plays a made-up song with its own words, translations, cover, tidbits and audio levels; `/demo/seek?t=42` jumps to 42 seconds. It's what the screenshots above were taken with.
 
 Please work on a branch and open a pull request.
 
