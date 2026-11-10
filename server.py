@@ -896,10 +896,29 @@ def translate_lines(lines):
     return result
 
 
-# Meta's NLLB model, installed by translate/setup.sh. When present it translates songs written in
-# Indian scripts on this Mac, before Google is asked.
+# Translation models installed by translate/setup.sh. When one is present it translates songs
+# written in Indian scripts on this Mac, before Google is asked. IndicTrans2, built for Indian
+# languages, is preferred; Meta's NLLB is used when IndicTrans2 isn't downloaded.
 NLLB_PYTHON = ROOT / "translate" / ".venv" / "bin" / "python"
 NLLB_SCRIPT = ROOT / "translate" / "nllb.py"
+INDIC_SCRIPT = ROOT / "translate" / "indictrans.py"
+HF_MODELS = Path.home() / ".cache" / "huggingface" / "hub"
+
+
+# In a blind test on these songs IndicTrans2 did better on Tamil, Telugu and Punjabi, and NLLB
+# on Hindi, so Hindi and Urdu go to NLLB when it's installed.
+PREFER_NLLB = {"hin_Deva", "urd_Arab"}
+
+
+def mac_translator(language=None):
+    """The helper script for this language, or None if no translation model is installed."""
+    if not NLLB_PYTHON.exists():
+        return None
+    indic = (HF_MODELS / "models--ai4bharat--indictrans2-indic-en-dist-200M").exists()
+    nllb = (HF_MODELS / "models--facebook--nllb-200-distilled-600M").exists()
+    if nllb and (language in PREFER_NLLB or not indic):
+        return NLLB_SCRIPT
+    return INDIC_SCRIPT if indic else None
 SCRIPT_LANGUAGES = {
     "TAMIL": "tam_Taml", "DEVANAGARI": "hin_Deva", "TELUGU": "tel_Telu", "MALAYALAM": "mal_Mlym",
     "KANNADA": "kan_Knda", "BENGALI": "ben_Beng", "GURMUKHI": "pan_Guru", "GUJARATI": "guj_Gujr",
@@ -916,10 +935,9 @@ def main_script(line):
     return max(counts, key=counts.get) if counts else None
 
 
-def translate_with_nllb(lines):
-    """English from NLLB, or None when it isn't installed or the song isn't mostly in an Indian script."""
-    if not NLLB_PYTHON.exists():
-        return None
+def translate_with_nllb(lines, script=None):
+    """English from a model on this Mac, or None when none is installed or the song isn't mostly
+    in an Indian script."""
     groups = {}
     for line in lines:
         language = SCRIPT_LANGUAGES.get(main_script(line))
@@ -927,9 +945,13 @@ def translate_with_nllb(lines):
             groups.setdefault(language, []).append(line)
     if sum(len(group) for group in groups.values()) < len(lines) * .5:
         return None
+    main_language = max(groups, key=lambda language: len(groups[language]))
+    script = script or mac_translator(main_language)
+    if not script:
+        return None
     payload = json.dumps({"groups": [{"lang": lang, "lines": group} for lang, group in groups.items()]}, ensure_ascii=False)
     done = subprocess.run(
-        [str(NLLB_PYTHON), str(NLLB_SCRIPT)], input=payload, capture_output=True, text=True, timeout=180,
+        [str(NLLB_PYTHON), str(script)], input=payload, capture_output=True, text=True, timeout=240,
         env={**os.environ, "HF_HUB_OFFLINE": "1", "TOKENIZERS_PARALLELISM": "false"},
     )
     if done.returncode != 0:

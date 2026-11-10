@@ -96,7 +96,12 @@ The Xcode app above does the same thing and keeps the screen on by itself, but w
 translate/setup.sh
 ```
 
-This installs Meta's NLLB translation model (about 3 GB, including its Python packages). Songs written in Indian scripts are then translated on your Mac in about 15 seconds, with no limits and nothing sent out. Without it, Google translates, and when Google says "too many requests", the local model below takes over. NLLB's license allows only non-commercial use.
+This installs translation models that run on your Mac, so songs written in Indian scripts are translated here in about 10 to 15 seconds, with no limits and nothing sent out:
+
+- **IndicTrans2** from AI4Bharat, built for Indian languages, handles Tamil, Telugu, Malayalam, Kannada, Punjabi and the rest. It needs a free Hugging Face account: accept the terms on [its page](https://huggingface.co/ai4bharat/indictrans2-indic-en-dist-200M), run `translate/.venv/bin/hf auth login`, then run `setup.sh` again.
+- **NLLB** from Meta handles Hindi and Urdu, where it did better in a blind test, and stands in for IndicTrans2 if you skip the login. Its license allows only non-commercial use.
+
+Together they take about 4 GB. Without them, Google translates, and when Google says "too many requests", the local model below takes over.
 
 ### 4. Optional: a local model
 
@@ -119,7 +124,7 @@ ollama pull qwen3.5:9b
 | `ios/` | The iPhone app. |
 | `assets/make_icons.swift` | Draws every icon from code. Run it from the project folder to regenerate them. |
 | `install.sh` | Mac setup. Safe to run again. |
-| `translate/` | The optional NLLB translator: `setup.sh` installs it, and `nllb.py` is what the server runs. |
+| `translate/` | The optional on-Mac translators: `setup.sh` installs them, and the server runs `indictrans.py` or `nllb.py` depending on the language. |
 | `tools/check_sync.py` | Compares the lyric timing with the voice the Mac hears right now. Prints no lyrics. |
 
 After changing `index.html`, just reload the page. After changing `server.py`, choose **Restart Server** from the menu bar. Problems are logged to `~/Library/Logs/DeskLyrics.log`.
@@ -151,7 +156,7 @@ Please work on a branch and open a pull request.
 | Service | What it receives | Why |
 |---|---|---|
 | [LRCLIB](https://lrclib.net) | Song title, artist, album, length | Lyrics |
-| Google Translate and Input Tools (unofficial endpoints) | Lines of the lyrics | Translation, unless NLLB is installed and the song is in an Indian script |
+| Google Translate and Input Tools (unofficial endpoints) | Lines of the lyrics | Translation, unless the on-Mac translators are installed and the song is in an Indian script |
 | Wikipedia | Song, album and artist names | Tidbits |
 | YouTube's image server | Video ID | Thumbnails |
 

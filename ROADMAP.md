@@ -4,7 +4,7 @@ What's being worked on, what's next, and good things to pick up. If you take som
 
 ## Now
 
-- **Better translation for Indian languages.** Try AI4Bharat's IndicTrans2 next to NLLB on the same songs and keep whichever reads better. It needs a free Hugging Face login on the Mac (`translate/.venv/bin/hf auth login`) and accepting the model's terms.
+- **Clean up the app: a full UI and UX audit.** Go through every screen in portrait and landscape: the three tabs, the controls, the visual styles, Tidbits, the idle clock, the error and empty states, and the Mac menu bar. Check accessibility (contrast, text size, VoiceOver labels, reduced motion), consistency with the liquid glass style, what's hard to discover, and anything confusing or left over from earlier experiments. Then fix what it finds, worst first.
 
 ## Next
 
@@ -17,9 +17,26 @@ What's being worked on, what's next, and good things to pick up. If you take som
 
 5. **Exact word timing with Whisper.** Lyric sites only time whole lines, so the word highlight is an estimate. Listening to the song with Whisper (on the Mac, after separating the vocals) could time each word.
 6. **An idle screen worth looking at.** When nothing plays, a slow wall of recently played album art, or a clock in the last album's colours.
-7. **More visual styles.** Album-art mosaic, ridgelines, constellation, rain on glass, and picking a style automatically by the song's mood.
+7. **More visual styles.** See the ideas below.
 8. **More from the phone.** Volume, a look at what's up next, "play more like this".
 9. **Windows support.** See below.
+
+## Visualizer ideas
+
+The Visualizer has Rings, Kolam and Words. Candidates for more, all in the album's colours:
+
+- **Album mosaic.** The cover breaks into tiles that lift and ripple with the beat, then snap back into the whole cover on big moments.
+- **Ridgelines.** The sound as rolling hills scrolling toward you, one ridge per moment, with the line floating above the horizon.
+- **Constellation.** Each sung word leaves a star, so by the end the whole song hangs there as a sky.
+- **Rain on glass.** The cover blurred behind wet glass; beats drop rain and the singing wipes a clear streak.
+- **Rangoli bloom.** A radial, eight-way symmetric flower that opens a ring of petals on each beat and closes between verses.
+- **Diyas.** A row of oil lamps, one lit per line sung, their flames flickering with the voice; the chorus lights them all.
+- **Vinyl.** The cover spins as a record, the grooves light up with the music, and the sung word orbits the label.
+- **Ink.** The waveform drawn as brush strokes that bleed and dry, like calligraphy on paper.
+- **Garden.** Each line grows a plant; by the end of the song it's a garden, a different one every play.
+- **Duets in two colours.** Tell the two voices apart by pitch and colour each singer's lines differently, in any style.
+- **Chorus moments.** Spot the repeated lines and give the chorus a bigger moment in whichever style is on.
+- **Pick by mood.** Choose the style for each song from its tempo and energy.
 
 ## Windows support
 
