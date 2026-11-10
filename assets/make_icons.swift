@@ -99,19 +99,6 @@ func render(pixels: Int, inset: Bool, to url: URL) {
 let manager = FileManager.default
 let root = URL(fileURLWithPath: manager.currentDirectoryPath)
 
-// iPhone: one opaque square; iOS rounds the corners itself.
-let catalog = root.appendingPathComponent("ios/DeskLyrics/Assets.xcassets")
-let appIcon = catalog.appendingPathComponent("AppIcon.appiconset")
-try manager.createDirectory(at: appIcon, withIntermediateDirectories: true)
-render(pixels: 1024, inset: false, to: appIcon.appendingPathComponent("icon-1024.png"))
-try #"{ "info": { "author": "xcode", "version": 1 } }"#.write(to: catalog.appendingPathComponent("Contents.json"), atomically: true, encoding: .utf8)
-try #"""
-{
-  "images": [{ "filename": "icon-1024.png", "idiom": "universal", "platform": "ios", "size": "1024x1024" }],
-  "info": { "author": "xcode", "version": 1 }
-}
-"""#.write(to: appIcon.appendingPathComponent("Contents.json"), atomically: true, encoding: .utf8)
-
 // Mac: every size macOS asks for, packed into one .icns file.
 let macFolder = root.appendingPathComponent("mac")
 let iconset = macFolder.appendingPathComponent("AppIcon.iconset")
