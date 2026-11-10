@@ -46,6 +46,8 @@ The Mac runs `server.py`, which starts by itself at login. A small helper in the
 
 ## Set it up
 
+> **On Windows?** Not yet. The computer side currently needs a Mac, because it reads what's playing, hears the audio and transliterates using parts of macOS. Everything on the phone works the same with a PC, and [ROADMAP.md](ROADMAP.md#windows-support) lists the Windows replacement for each Mac-only piece, if you'd like to build it.
+
 ### 1. On the Mac
 
 You need macOS 14.2 or later, [Homebrew](https://brew.sh), and the Xcode command line tools (`xcode-select --install`).
@@ -88,7 +90,15 @@ Keep the phone on the same Wi-Fi as the Mac. With a free Apple account the app s
 
 The Xcode app above does the same thing and keeps the screen on by itself, but with a free Apple account it has to be reinstalled every 7 days.
 
-### 3. Optional: a local model
+### 3. Optional: translate on your Mac
+
+```bash
+translate/setup.sh
+```
+
+This installs Meta's NLLB translation model (about 3 GB, including its Python packages). Songs written in Indian scripts are then translated on your Mac in about 15 seconds, with no limits and nothing sent out. Without it, Google translates, and when Google says "too many requests", the local model below takes over. NLLB's license allows only non-commercial use.
+
+### 4. Optional: a local model
 
 Tidbits work without this, but the funny ones, and the **Natural** translation option (English that says what each line means instead of word for word), need a model running on your own Mac through [Ollama](https://ollama.com):
 
@@ -109,6 +119,7 @@ ollama pull qwen3.5:9b
 | `ios/` | The iPhone app. |
 | `assets/make_icons.swift` | Draws every icon from code. Run it from the project folder to regenerate them. |
 | `install.sh` | Mac setup. Safe to run again. |
+| `translate/` | The optional NLLB translator: `setup.sh` installs it, and `nllb.py` is what the server runs. |
 | `tools/check_sync.py` | Compares the lyric timing with the voice the Mac hears right now. Prints no lyrics. |
 
 After changing `index.html`, just reload the page. After changing `server.py`, choose **Restart Server** from the menu bar. Problems are logged to `~/Library/Logs/DeskLyrics.log`.
@@ -126,6 +137,8 @@ Please work on a branch and open a pull request.
 
 ### Good first things to work on
 
+[ROADMAP.md](ROADMAP.md) has the bigger plans, including Windows support. Smaller things:
+
 - Spotify hasn't been tested end to end.
 - Next and previous haven't been tested on real YouTube playback.
 - Word-by-word highlighting is an estimate, because lyric sites only time whole lines.
@@ -138,7 +151,7 @@ Please work on a branch and open a pull request.
 | Service | What it receives | Why |
 |---|---|---|
 | [LRCLIB](https://lrclib.net) | Song title, artist, album, length | Lyrics |
-| Google Translate and Input Tools (unofficial endpoints) | Lines of the lyrics | Translation |
+| Google Translate and Input Tools (unofficial endpoints) | Lines of the lyrics | Translation, unless NLLB is installed and the song is in an Indian script |
 | Wikipedia | Song, album and artist names | Tidbits |
 | YouTube's image server | Video ID | Thumbnails |
 

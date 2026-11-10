@@ -896,6 +896,117 @@ def translate_lines(lines):
     return result
 
 
+# Meta's NLLB model, installed by translate/setup.sh. When present it translates songs written in
+# Indian scripts on this Mac, before Google is asked.
+NLLB_PYTHON = ROOT / "translate" / ".venv" / "bin" / "python"
+NLLB_SCRIPT = ROOT / "translate" / "nllb.py"
+SCRIPT_LANGUAGES = {
+    "TAMIL": "tam_Taml", "DEVANAGARI": "hin_Deva", "TELUGU": "tel_Telu", "MALAYALAM": "mal_Mlym",
+    "KANNADA": "kan_Knda", "BENGALI": "ben_Beng", "GURMUKHI": "pan_Guru", "GUJARATI": "guj_Gujr",
+    "ORIYA": "ory_Orya", "ARABIC": "urd_Arab",
+}
+
+
+def main_script(line):
+    counts = {}
+    for c in line:
+        if c.isalpha():
+            name = unicodedata.name(c, "").split(" ")[0]
+            counts[name] = counts.get(name, 0) + 1
+    return max(counts, key=counts.get) if counts else None
+
+
+def translate_with_nllb(lines):
+    """English from NLLB, or None when it isn't installed or the song isn't mostly in an Indian script."""
+    if not NLLB_PYTHON.exists():
+        return None
+    groups = {}
+    for line in lines:
+        language = SCRIPT_LANGUAGES.get(main_script(line))
+        if language:
+            groups.setdefault(language, []).append(line)
+    if sum(len(group) for group in groups.values()) < len(lines) * .5:
+        return None
+    payload = json.dumps({"groups": [{"lang": lang, "lines": group} for lang, group in groups.items()]}, ensure_ascii=False)
+    done = subprocess.run(
+        [str(NLLB_PYTHON), str(NLLB_SCRIPT)], input=payload, capture_output=True, text=True, timeout=180,
+        env={**os.environ, "HF_HUB_OFFLINE": "1", "TOKENIZERS_PARALLELISM": "false"},
+    )
+    if done.returncode != 0:
+        raise RuntimeError((done.stderr.strip().splitlines() or ["NLLB stopped"])[-1][:200])
+    return {line: text for line, text in json.loads(done.stdout)["lines"].items() if text and text != line}
+
+
+GOOGLE_REST = 600   # after Google refuses with "too many requests", leave it alone this long
+google_resting_until = 0.0
+
+
+def numbered_lines(reply, count):
+    """Reads a model's {"lines": [{"n": 1, "en": "..."}]} reply into {n: text}."""
+    rows = {}
+    decoder = json.JSONDecoder()
+    at = reply.find("{")
+    while at != -1:
+        try:
+            value, end = decoder.raw_decode(reply, at)
+        except ValueError:
+            at = reply.find("{", at + 1)
+            continue
+        for item in value.get("lines", [value]) if isinstance(value, dict) else []:
+            try:
+                n, text = int(item.get("n")), str(item.get("en", "")).strip()
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if 1 <= n <= count and text:
+                rows[n] = text
+        at = reply.find("{", end)
+    return rows
+
+
+def translate_locally(lines):
+    """A faithful line-by-line translation from the model on this Mac, for when Google won't answer."""
+    if sum(reads_as_english(line) for line in lines) > len(lines) * .6:
+        return {}   # already English
+    model = choose_writer()
+    if not model:
+        raise RuntimeError("no local model installed")
+    numbered = "\n".join(f"{n}. {line} | {romanize(line) or line}" for n, line in enumerate(lines, 1))
+    prompt = (
+        "Each numbered line is a song lyric, followed by how it sounds.\n\n"
+        f"{numbered}\n\n"
+        "Translate every line into plain English, staying close to the words. One entry per line, in order.\n"
+        'Reply with only JSON: {"lines": [{"n": 1, "en": "..."}]}'
+    )
+    with tidbits.writing:   # one job at a time on the local model
+        reply = ollama_chat(model, "You translate song lyrics accurately into English.", prompt, 3000)
+    rows = numbered_lines(reply, len(lines))
+    return {lines[n - 1]: text for n, text in rows.items() if text != lines[n - 1]}
+
+
+def english_for(lines):
+    """Tries NLLB on this Mac, then Google, then the local model. None if all of them fail."""
+    global google_resting_until
+    try:
+        english = translate_with_nllb(lines)
+        if english is not None:
+            return english
+    except Exception as err:
+        print(f"on-Mac translation failed: {err}", flush=True)
+    try:
+        if time.time() < google_resting_until:
+            raise RuntimeError("Google is rate-limiting, giving it a rest")
+        return translate_lines(lines)
+    except Exception as err:
+        if isinstance(err, urllib.error.HTTPError) and err.code == 429:
+            google_resting_until = time.time() + GOOGLE_REST
+        print(f"translation failed: {err}; trying the local model", flush=True)
+    try:
+        return translate_locally(lines)
+    except Exception as err:   # no translation is fine: the lyrics still show
+        print(f"local translation failed: {err}", flush=True)
+        return None
+
+
 class TranslationStore:
     FAILED_RETRY = 45
 
@@ -919,10 +1030,8 @@ class TranslationStore:
         return entry
 
     def _fetch(self, key, lines, saved):
-        try:
-            english = translate_lines(lines)
-        except Exception as err:   # no translation is fine: the lyrics still show
-            print(f"translation failed: {err}", flush=True)
+        english = english_for(lines)
+        if english is None:
             entry = {"status": "failed", "retry_at": time.time() + self.FAILED_RETRY}
         else:
             entry = {"status": "ready" if english else "none", "lines": english}
@@ -953,8 +1062,11 @@ class NaturalStore:
                 self.entries[key] = entry
                 return entry
         literal = translations.ensure(key, lines)
-        if literal.get("status") != "ready":
-            return {"status": "none" if literal.get("status") == "none" else "loading"}
+        if literal.get("status") == "none":
+            return {"status": "none"}
+        if literal.get("status") not in ("ready", "failed"):
+            return {"status": "loading"}
+        literal = {"lines": literal.get("lines") or {}}   # a failed literal one just means no hint
         with self.lock:
             if self.entries.get(key, {}).get("status") == "loading":
                 return self.entries[key]
@@ -983,11 +1095,11 @@ class NaturalStore:
 
 def natural_lines(model, lines, literal, track):
     numbered = "\n".join(
-        f"{n}. {line} | {romanize(line) or line} | literal: {literal.get(line, line)}" for n, line in enumerate(lines, 1)
+        f"{n}. {line} | {romanize(line) or line}" + (f" | literal: {literal[line]}" if line in literal else "") for n, line in enumerate(lines, 1)
     )
     prompt = (
         f"Song: \"{track.get('name', '')}\" by {track.get('artist', '')}.\n\n"
-        "Each numbered line shows the lyric, how it sounds, and a word-for-word machine translation.\n\n"
+        "Each numbered line shows the lyric, how it sounds, and where available a word-for-word machine translation.\n\n"
         f"{numbered}\n\n"
         "Write each line in natural English that says what it means and how it feels, the way a friend who knows "
         "the language would explain it while the song plays. Read the whole song first, so repeated words, "
@@ -996,27 +1108,11 @@ def natural_lines(model, lines, literal, track):
         'Reply with only JSON: {"lines": [{"n": 1, "en": "..."}]}'
     )
     reply = ollama_chat(model, "You translate song lyrics so they make sense to an English speaker. You never add lines or invent meaning that isn't there.", prompt, 3000)
-    rows = {}
-    decoder = json.JSONDecoder()
-    at = reply.find("{")
-    while at != -1:
-        try:
-            value, end = decoder.raw_decode(reply, at)
-        except ValueError:
-            at = reply.find("{", at + 1)
-            continue
-        for item in value.get("lines", [value]) if isinstance(value, dict) else []:
-            try:
-                n, text = int(item.get("n")), str(item.get("en", "")).strip()
-            except (AttributeError, TypeError, ValueError):
-                continue
-            if 1 <= n <= len(lines) and text:
-                rows[n] = text
-        at = reply.find("{", end)
+    rows = numbered_lines(reply, len(lines))
     result = {}
     for n, text in rows.items():
         line = lines[n - 1]
-        if len(text) <= 3 * len(literal.get(line, line)) + 40 and text != line:
+        if len(text) <= 3 * len(literal.get(line, line)) + 60 and text != line:
             result[line] = text
     return result
 

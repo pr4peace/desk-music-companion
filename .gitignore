@@ -17,3 +17,6 @@ xcuserdata/
 
 # Design-check working file
 .impeccable/hook.cache.json
+
+# Translation model environment, made by translate/setup.sh
+translate/.venv/
