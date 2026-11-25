@@ -659,7 +659,7 @@ function rest() {
 const STEP = 0.25;
 
 const view = { key: null, status: null, text: '', tapped: false, lines: [], plain: false, offset: 0, active: -2, plainY: null, art: null, roman: {}, english: {}, natural: {}, context: {}, translating: false, naturalizing: false, explaining: false, hasExtras: false,
-  wait: { literal: null, natural: null, context: null } };
+  wait: { literal: null, natural: null, context: null }, weak: { natural: false, context: false } };
 const clock = { pos: 0, at: performance.now(), running: false };
 let duration = 0, pausedSince = null, failures = 0, timingTimer = null;
 
@@ -801,6 +801,7 @@ function clearLyrics() {
   view.roman = {};
   view.english = {};
   view.natural = {};
+  view.weak = { natural: false, context: false };   // written from a stand-in: keep looking for the rewrite
   view.context = {};
   view.naturalizing = false;
   view.explaining = false;
@@ -2414,9 +2415,9 @@ function setNaturalizing(on) {
 // The meaning-first translation, written on the Mac. The literal one stays up until it arrives.
 // One written from a stand-in translation comes back "weak": it shows, and the phone looks again
 // now and then, because the Mac writes it again once Google's translation arrives.
-async function loadNatural(key, refresh = false) {
+async function loadNatural(key) {
   clearTimeout(view.naturalTimer);
-  if (view.key !== key || !extras.natural || (!refresh && Object.keys(view.natural).length)) return;
+  if (view.key !== key || !extras.natural || (Object.keys(view.natural).length && !view.weak.natural)) return;
   let wait = 0;
   try {
     const res = await fetch(`/api/translation?key=${key}&style=natural`, { cache: 'no-store' });
@@ -2424,7 +2425,8 @@ async function loadNatural(key, refresh = false) {
     if (view.key !== key) return;
     if (data.status === 'ready') {
       view.natural = data.lines; view.wait.natural = null; setNaturalizing(false); applyExtras();
-      if (data.weak) view.naturalTimer = setTimeout(() => loadNatural(key, true), 60000);
+      view.weak.natural = !!data.weak;
+      if (data.weak) view.naturalTimer = setTimeout(() => loadNatural(key), 60000);
       return;
     }
     if (data.status === 'loading') { wait = 1200; view.wait.natural = { done: data.done || 0, total: data.total || 1 }; }
@@ -2442,9 +2444,9 @@ function setExplaining(on) {
 }
 
 // Notes on what lines mean in the song as a whole, written on the Mac after the translation.
-async function loadContext(key, refresh = false) {
+async function loadContext(key) {
   clearTimeout(view.contextTimer);
-  if (view.key !== key || !extras.context || (!refresh && Object.keys(view.context).length)) return;
+  if (view.key !== key || !extras.context || (Object.keys(view.context).length && !view.weak.context)) return;
   let wait = 0;
   try {
     const res = await fetch(`/api/translation?key=${key}&style=context`, { cache: 'no-store' });
@@ -2452,7 +2454,8 @@ async function loadContext(key, refresh = false) {
     if (view.key !== key) return;
     if (data.status === 'ready') {
       view.context = data.lines; view.wait.context = null; setExplaining(false); applyExtras();
-      if (data.weak) view.contextTimer = setTimeout(() => loadContext(key, true), 60000);
+      view.weak.context = !!data.weak;
+      if (data.weak) view.contextTimer = setTimeout(() => loadContext(key), 60000);
       return;
     }
     if (data.status === 'loading') { wait = 1200; view.wait.context = { done: data.done || 0, total: data.total || 1 }; }
