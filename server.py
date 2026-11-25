@@ -446,6 +446,9 @@ def artist_overlaps(item, names):
     return False
 
 
+STRICT_CONFIRMED = 10   # seconds of difference allowed for a Music-app song when title and artist agree
+
+
 def matches(item, track, titles, names):
     """Only accept a result that is clearly this song. No lyrics beats wrong lyrics."""
     title = norm(item.get("trackName"))
@@ -460,7 +463,9 @@ def matches(item, track, titles, names):
     overlap = artist_overlaps(item, names)
     if track["duration"]:
         extra = track["duration"] - (item.get("duration") or 0)
-        fits = abs(extra) <= (12 if track["loose"] else 5)
+        # The same recording is often listed a few seconds longer or shorter on lyrics sites. Allow
+        # more when the exact title and the singer agree; timing_fits still rejects a longer cut.
+        fits = abs(extra) <= (12 if track["loose"] else STRICT_CONFIRMED if exact and overlap else 5)
         # A music video can run well past the song, so it may be longer, but only
         # when the exact title and the singer both confirm it is the same song.
         if not fits and not (track["loose"] and exact and overlap and 0 < extra <= VIDEO_EXTRA):
@@ -648,7 +653,7 @@ def lookup_lyrics(track):
     return timed or record
 
 
-LOOKUP_VERSION = 3   # songs saved by an earlier version of the matching rules are looked up again
+LOOKUP_VERSION = 4   # songs saved by an earlier version of the matching rules are looked up again
 
 
 class LyricsStore:
