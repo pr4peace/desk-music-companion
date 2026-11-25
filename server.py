@@ -768,6 +768,80 @@ def lyric_texts(entry):
     return list(dict.fromkeys(row.strip() for row in rows if row.strip()))
 
 
+class GoogleResting(Exception):
+    """Google refused recently, so it isn't being asked again yet."""
+
+
+def retry_after(err):
+    """Seconds a refusal asks us to wait, or 0 when it doesn't say."""
+    try:
+        return max(0.0, float((err.headers or {}).get("Retry-After") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+class GoogleGate:
+    """Google's free translate endpoint blocks a Mac that asks too often, and keeps blocking it while
+    it keeps asking. So requests go one at a time with a gap between them, and after a "too many
+    requests" refusal Google is left alone for a while: 10 minutes, then twice as long after each
+    refusal in a row, up to 3 hours. Retrying sooner only makes the block last longer."""
+    GAP = 1.0
+    REST = 600
+    MAX_REST = 3 * 3600
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.busy = threading.Lock()   # held for a whole request, so no two are ever in flight
+        self.last = 0.0
+        self.resting_until = 0.0
+        self.strikes = 0
+
+    def resting(self):
+        return time.time() < self.resting_until
+
+    def wait_turn(self):
+        with self.lock:
+            if self.resting():
+                raise GoogleResting(f"Google is rate-limiting, resting for {self.resting_until - time.time():.0f}s more")
+            pause = self.last + self.GAP - time.time()
+            if pause > 0:
+                time.sleep(pause)
+            self.last = time.time()
+
+    def refused(self, wait=0.0):
+        with self.lock:
+            self.strikes += 1
+            rest = min(self.MAX_REST, self.REST * 2 ** (self.strikes - 1))
+            self.resting_until = time.time() + max(rest, wait)
+            print(f"Google refused with too many requests; leaving it alone for {max(rest, wait) / 60:.0f} minutes", flush=True)
+
+    def answered(self):
+        with self.lock:
+            self.strikes = 0
+
+
+google_gate = GoogleGate()
+
+
+def ask_google(request, timeout):
+    """Sends one request to Google through the gate. Server hiccups get one more try."""
+    for attempt in range(2):
+        with google_gate.busy:
+            google_gate.wait_turn()
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    data = json.load(response)
+                google_gate.answered()
+                return data
+            except urllib.error.HTTPError as err:
+                if err.code == 429:
+                    google_gate.refused(retry_after(err))
+                    raise
+                if err.code not in (500, 502, 503, 504) or attempt == 1:
+                    raise
+        time.sleep(3)
+
+
 def google_translate(lines):
     """Returns (English lines, detected language)."""
     request = urllib.request.Request(
@@ -775,25 +849,21 @@ def google_translate(lines):
         data=urllib.parse.urlencode({"q": "\n".join(lines)}).encode("utf-8"),
         headers={"User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
     )
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(request, timeout=15) as response:
-                data = json.load(response)
-            break
-        except urllib.error.HTTPError as err:   # Google has brief hiccups: try again shortly
-            if err.code not in (429, 500, 502, 503, 504) or attempt == 2:
-                raise
-            time.sleep(2 + attempt * 3)
+    data = ask_google(request, 15)
     text = "".join(segment[0] for segment in data[0] if segment[0])
     return [row.strip() for row in text.split("\n")], data[2]
 
 
 def translate_rows(rows):
-    """Like google_translate, but always returns one English row for each row sent."""
+    """Like google_translate, but always returns one English row for each row sent. When Google
+    merges lines, each half is asked again, which takes far fewer requests than one per line."""
     english, language = google_translate(rows)
-    if language != "en" and len(english) != len(rows):   # the lines came back merged: go one at a time
-        english = [google_translate([row])[0][0] for row in rows]
-    return english, language
+    if language == "en" or len(english) == len(rows):
+        return english, language
+    if len(rows) == 1:
+        return [" ".join(row for row in english if row)], language
+    half = len(rows) // 2
+    return translate_rows(rows[:half])[0] + translate_rows(rows[half:])[0], language
 
 
 # Google's typing tools, by language, for lyrics published in English letters.
@@ -818,8 +888,7 @@ def spell_natively(line, language):
     """Writes a lyric typed in English letters in its own script, or returns None."""
     query = urllib.parse.urlencode({"text": line, "itc": NATIVE_INPUT[language], "num": 1, "cp": 0, "cs": 1, "ie": "utf-8", "oe": "utf-8", "app": "desklyrics"})
     request = urllib.request.Request("https://inputtools.google.com/request?" + query, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=10) as response:
-        data = json.load(response)
+    data = ask_google(request, 10)
     if data[0] != "SUCCESS":
         return None
     return "".join(part[1][0] for part in data[1] if part[1]) or None
@@ -847,10 +916,73 @@ def improve_romanized(chunk, english, language):
     return merged
 
 
-def translate_lines(lines):
-    """Maps each line to English. Empty when the song is already in English."""
-    chunks, current, size = [], [], 0
+class LineCache:
+    """Every line Google has translated, kept on disk, so a line is never sent twice: not when a song
+    plays again, not when its chorus turns up in another song, and not when a song that was cut off
+    halfway by a refusal is tried again. Maps a line to [English, the language Google detected]."""
+    LIMIT = 50000
+
+    def __init__(self, path):
+        self.path = path
+        self.lock = threading.Lock()
+        self.lines = None
+
+    def _load(self):
+        if self.lines is None:
+            try:
+                self.lines = json.loads(self.path.read_text("utf-8"))
+            except (OSError, ValueError):
+                self.lines = {}
+        return self.lines
+
+    def get(self, line):
+        with self.lock:
+            return self._load().get(line)
+
+    def put(self, pairs):
+        with self.lock:
+            lines = self._load()
+            lines.update(pairs)
+            for old in list(lines)[:max(0, len(lines) - self.LIMIT)]:   # the oldest go first
+                del lines[old]
+            self.path.parent.mkdir(exist_ok=True)
+            spare = self.path.with_suffix(".tmp")
+            spare.write_text(json.dumps(lines, ensure_ascii=False), "utf-8")
+            spare.replace(self.path)
+
+
+google_lines = LineCache(CACHE / "google-lines.json")
+
+
+def google_known(lines):
+    """The English Google has already given for these lines."""
+    known = {}
     for line in lines:
+        hit = google_lines.get(line)
+        if hit and hit[0] and hit[0] != line:
+            known[line] = hit[0]
+    return known
+
+
+def translate_lines(lines):
+    """Maps each line to English. Empty when the song is already in English. Lines Google has
+    translated before come from the cache; only the rest are sent."""
+    result = {}
+    fresh = []
+    cached_english = 0
+    for line in lines:
+        hit = google_lines.get(line)
+        if not hit:
+            fresh.append(line)
+        elif hit[1] == "en":   # an English line, perhaps from another song: nothing to translate
+            cached_english += 1
+        elif hit[0] and hit[0] != line:
+            result[line] = hit[0]
+    if lines and cached_english == len(lines):
+        return {}
+
+    chunks, current, size = [], [], 0
+    for line in fresh:
         if current and size + len(line) > TRANSLATE_CHUNK:
             chunks.append(current)
             current, size = [], 0
@@ -859,13 +991,13 @@ def translate_lines(lines):
     if current:
         chunks.append(current)
 
-    result = {}
     for chunk in chunks:
         english, language = translate_rows(chunk)
-        if language == "en":
-            return {}
         if language in NATIVE_INPUT:
             english = improve_romanized(chunk, english, language)
+        google_lines.put({a: [b, language] for a, b in zip(chunk, english)})
+        if language == "en":
+            return {}
         result.update({a: b for a, b in zip(chunk, english) if b and b != a})
     return result
 
@@ -933,10 +1065,6 @@ def translate_with_nllb(lines, script=None):
     return {line: text for line, text in json.loads(done.stdout)["lines"].items() if text and text != line}
 
 
-GOOGLE_REST = 600   # after Google refuses with "too many requests", leave it alone this long
-google_resting_until = 0.0
-
-
 def numbered_lines(reply, count, field="en"):
     """Reads a model's {"lines": [{"n": 1, "en": "..."}]} reply into {n: text}."""
     rows = {}
@@ -999,31 +1127,33 @@ def translate_locally(lines):
 
 
 def english_for(lines):
-    """Tries NLLB on this Mac, then Google, then the local model. None if all of them fail."""
-    global google_resting_until
+    """Tries the translation model on this Mac, then Google, then the local writing model.
+    Returns (English, where it came from: "mac", "google" or "local"), or (None, None) if all fail.
+    The local writing model is a stand-in: any lines Google translated before it refused are kept."""
     try:
         english = translate_with_nllb(lines)
         if english is not None:
-            return english
+            return english, "mac"
     except Exception as err:
         print(f"on-Mac translation failed: {err}", flush=True)
     try:
-        if time.time() < google_resting_until:
-            raise RuntimeError("Google is rate-limiting, giving it a rest")
-        return translate_lines(lines)
+        return translate_lines(lines), "google"
     except Exception as err:
-        if isinstance(err, urllib.error.HTTPError) and err.code == 429:
-            google_resting_until = time.time() + GOOGLE_REST
         print(f"translation failed: {err}; trying the local model", flush=True)
+    known = google_known(lines)
     try:
-        return translate_locally(lines)
+        return {**translate_locally(lines), **known}, "local"
     except Exception as err:   # no translation is fine: the lyrics still show
         print(f"local translation failed: {err}", flush=True)
-        return None
+        return (known, "local") if known else (None, None)
 
 
 class TranslationStore:
+    """The word-for-word translation of each song. When Google was resting and the local writing
+    model stood in, the song is shown with that, marked "source": "local", and Google is asked
+    again once its rest is over. Its translation then replaces the stand-in, on disk too."""
     FAILED_RETRY = 45
+    UPGRADE_RETRY = 600   # when Google fails for some other reason, try upgrading again after this
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -1033,25 +1163,56 @@ class TranslationStore:
         saved = CACHE / f"{key}.en.json"
         with self.lock:
             entry = self.entries.get(key)
-            if entry and time.time() < entry.get("retry_at", float("inf")):
-                return entry
             if not entry and saved.exists():
                 entry = json.loads(saved.read_text("utf-8"))
+                if entry.get("source") == "local":
+                    entry["retry_at"] = entry.get("better_at", 0)
                 self.entries[key] = entry
+            if entry and time.time() < entry.get("retry_at", float("inf")):
                 return entry
-            entry = {"status": "loading", "total": len(lines), "since": time.time()}
-            self.entries[key] = entry
-        threading.Thread(target=self._fetch, args=(key, lines, saved), daemon=True).start()
+            if entry and entry.get("source") == "local":   # time to ask Google again, while the stand-in shows
+                entry["retry_at"] = float("inf")
+                target, args = self._upgrade, (key, lines, saved, entry)
+            else:
+                entry = {"status": "loading", "total": len(lines), "since": time.time()}
+                self.entries[key] = entry
+                target, args = self._fetch, (key, lines, saved)
+        threading.Thread(target=target, args=args, daemon=True).start()
         return entry
 
+    def _save(self, saved, entry):
+        CACHE.mkdir(exist_ok=True)
+        saved.write_text(json.dumps({k: v for k, v in entry.items() if k != "retry_at"}, ensure_ascii=False), "utf-8")
+
     def _fetch(self, key, lines, saved):
-        english = english_for(lines)
+        english, source = english_for(lines)
         if english is None:
             entry = {"status": "failed", "retry_at": time.time() + self.FAILED_RETRY}
         else:
             entry = {"status": "ready" if english else "none", "lines": english}
-            CACHE.mkdir(exist_ok=True)
-            saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
+            if source == "local":
+                entry.update(source="local", better_at=self._next_try())
+                entry["retry_at"] = entry["better_at"]
+            self._save(saved, entry)   # leaves retry_at out
+        with self.lock:
+            self.entries[key] = entry
+
+    def _next_try(self):
+        return max(google_gate.resting_until, time.time() + 60)
+
+    def _upgrade(self, key, lines, saved, stand_in):
+        try:
+            english = translate_lines(lines)
+        except Exception as err:
+            print(f"translation upgrade waits: {err}", flush=True)
+            later = google_gate.resting_until if google_gate.resting() else time.time() + self.UPGRADE_RETRY
+            with self.lock:
+                stand_in["better_at"] = later
+                stand_in["retry_at"] = later
+            self._save(saved, stand_in)
+            return
+        entry = {"status": "ready" if english else "none", "lines": english, "source": "google"}
+        self._save(saved, entry)
         with self.lock:
             self.entries[key] = entry
 
