@@ -446,6 +446,9 @@ def artist_overlaps(item, names):
     return False
 
 
+STRICT_CONFIRMED = 10   # seconds of difference allowed for a Music-app song when title and artist agree
+
+
 def matches(item, track, titles, names):
     """Only accept a result that is clearly this song. No lyrics beats wrong lyrics."""
     title = norm(item.get("trackName"))
@@ -460,7 +463,9 @@ def matches(item, track, titles, names):
     overlap = artist_overlaps(item, names)
     if track["duration"]:
         extra = track["duration"] - (item.get("duration") or 0)
-        fits = abs(extra) <= (12 if track["loose"] else 5)
+        # The same recording is often listed a few seconds longer or shorter on lyrics sites. Allow
+        # more when the exact title and the singer agree; timing_fits still rejects a longer cut.
+        fits = abs(extra) <= (12 if track["loose"] else STRICT_CONFIRMED if exact and overlap else 5)
         # A music video can run well past the song, so it may be longer, but only
         # when the exact title and the singer both confirm it is the same song.
         if not fits and not (track["loose"] and exact and overlap and 0 < extra <= VIDEO_EXTRA):
@@ -648,7 +653,7 @@ def lookup_lyrics(track):
     return timed or record
 
 
-LOOKUP_VERSION = 3   # songs saved by an earlier version of the matching rules are looked up again
+LOOKUP_VERSION = 4   # songs saved by an earlier version of the matching rules are looked up again
 
 
 class LyricsStore:
@@ -705,9 +710,11 @@ class LyricsStore:
             (CACHE / f"{key}.en.json").unlink(missing_ok=True)   # the old translations were of other words
             (CACHE / f"{key}.natural.json").unlink(missing_ok=True)
             (CACHE / f"{key}.context.json").unlink(missing_ok=True)
+            (CACHE / f"{key}.story.json").unlink(missing_ok=True)
             translations.entries.pop(key, None)
             naturals.entries.pop(key, None)
             contexts.entries.pop(key, None)
+            stories.entries.pop(key, None)
             timing.forget(key)   # the nudge was for the old lines' timings
         saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
         self._set(key, entry)
@@ -1632,11 +1639,31 @@ class TranslationStore:
 WRITING_VERSION = 2   # raise when the prompts change enough that saved writing should be redone
 
 
+def on_stand_in(literal):
+    """True when a word-for-word translation is the local model's stand-in, or is missing because
+    every translator failed. Writing built on it is weak and is redone once a proper one arrives."""
+    return literal.get("source") == "local" or literal.get("status") == "failed"
+
+
+def built_before_upgrade(saved, key):
+    """For writing saved before it was marked weak or not: True when the song's word-for-word
+    translation has since been replaced by Google's, so the writing was built on the stand-in."""
+    literal = CACHE / f"{key}.en.json"
+    try:
+        if json.loads(literal.read_text("utf-8")).get("source") != "google":
+            return False
+        return literal.stat().st_mtime > saved.stat().st_mtime
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 class WrittenStore:
     """Writing the local model does with the whole song as context, starting from the literal
     translation: natural English for each line, or notes on what lines mean in the song.
     Optional: the literal translation always shows first. While it writes, the entry says how
-    far through the song it has got, so the phone can show real progress."""
+    far through the song it has got, so the phone can show real progress.
+    Writing done from a stand-in translation is marked "weak". Once Google's translation replaces
+    the stand-in, it is written again; the weak version keeps showing until the new one is ready."""
     FAILED_RETRY = 120
     UNAVAILABLE_RETRY = 600
 
@@ -1650,25 +1677,45 @@ class WrittenStore:
         saved = CACHE / f"{key}.{self.name}.json"
         with self.lock:
             entry = self.entries.get(key)
-            if entry and time.time() < entry.get("retry_at", float("inf")):
-                return entry
             if not entry and saved.exists():
                 entry = json.loads(saved.read_text("utf-8"))
                 if entry.get("version") == WRITING_VERSION or self.name != "natural":
+                    if "weak" not in entry and built_before_upgrade(saved, key):
+                        entry["weak"] = True
                     self.entries[key] = entry
-                    return entry
+                else:
+                    entry = None
+            if entry and not entry.get("weak") and time.time() < entry.get("retry_at", float("inf")):
+                return entry
+            weak = entry if entry and entry.get("weak") else None
+            if weak and (weak.get("rewriting") or time.time() < weak.get("retry_at", 0)):
+                return weak
         literal = translations.ensure(key, lines)
+        if weak:
+            if literal.get("status") == "none":   # Google says the song is English after all
+                with self.lock:
+                    self.entries.pop(key, None)
+                saved.unlink(missing_ok=True)
+                return {"status": "none"}
+            if literal.get("status") != "ready" or on_stand_in(literal):
+                return weak   # still the stand-in: keep showing what was written from it
+            with self.lock:
+                if weak.get("rewriting"):
+                    return weak
+                weak["rewriting"] = True
+            threading.Thread(target=self._write, args=(key, lines, literal["lines"] or {}, track, saved, False), daemon=True).start()
+            return weak
         if literal.get("status") == "none":
             return {"status": "none"}
         if literal.get("status") not in ("ready", "failed"):
             return {"status": "loading"}
-        literal = {"lines": literal.get("lines") or {}}   # a failed literal one just means no hint
         with self.lock:
             if self.entries.get(key, {}).get("status") == "loading":
                 return self.entries[key]
             entry = {"status": "loading", "done": 0, "total": len(lines)}
             self.entries[key] = entry
-        threading.Thread(target=self._write, args=(key, lines, literal["lines"], track, saved), daemon=True).start()
+        # a failed literal one just means no hint
+        threading.Thread(target=self._write, args=(key, lines, literal.get("lines") or {}, track, saved, on_stand_in(literal)), daemon=True).start()
         return entry
 
     def _progress(self, key, done):
@@ -1677,7 +1724,10 @@ class WrittenStore:
             if entry and entry.get("status") == "loading":
                 entry["done"] = max(entry.get("done", 0), done)
 
-    def _write(self, key, lines, literal, track, saved):
+    def _write(self, key, lines, literal, track, saved, weak):
+        with self.lock:
+            previous = self.entries.get(key)
+        rewriting = previous is not None and previous.get("rewriting")
         model = choose_writer()
         if not model:
             entry = {"status": "unavailable", "retry_at": time.time() + self.UNAVAILABLE_RETRY}
@@ -1686,13 +1736,20 @@ class WrittenStore:
                 with tidbits.writing:   # one job at a time on the local model
                     written = self.writer(model, lines, literal, track, lambda done: self._progress(key, done))
                 entry = {"status": "ready" if written else "none", "lines": written, "version": WRITING_VERSION}
+                if weak:
+                    entry["weak"] = True
                 CACHE.mkdir(exist_ok=True)
                 saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
             except Exception as err:
                 print(f"{self.name} writing failed: {err}", flush=True)
                 entry = {"status": "failed", "retry_at": time.time() + self.FAILED_RETRY}
         with self.lock:
-            self.entries[key] = entry
+            if rewriting and entry["status"] in ("failed", "unavailable"):   # keep the weak version up, try later
+                previous.pop("rewriting", None)
+                previous["retry_at"] = entry["retry_at"]
+                return
+            if self.entries.get(key) is previous or not rewriting:
+                self.entries[key] = entry
 
 
 def lines_written(text):
@@ -1813,7 +1870,9 @@ def song_story(model, lines, english, track):
 
 class StoryStore:
     """The opening of the Story tab. It waits for the Natural translation (asking for it if nobody has
-    yet), then has the local model write the story from it. English songs go straight to the writing."""
+    yet), then has the local model write the story from it. English songs go straight to the writing.
+    A story written from weak translations is marked "weak" and written again, from the rewritten
+    Natural translation, once Google's translation has replaced the stand-in."""
     FAILED_RETRY = 120
     UNAVAILABLE_RETRY = 600
 
@@ -1825,34 +1884,53 @@ class StoryStore:
         saved = CACHE / f"{key}.story.json"
         with self.lock:
             entry = self.entries.get(key)
-            if entry and time.time() < entry.get("retry_at", float("inf")):
-                return entry
             if not entry and saved.exists():
                 entry = json.loads(saved.read_text("utf-8"))
                 if entry.get("version") == WRITING_VERSION:
+                    if "weak" not in entry and built_before_upgrade(saved, key):
+                        entry["weak"] = True
                     self.entries[key] = entry
-                    return entry
+                else:
+                    entry = None
+            if entry and not entry.get("weak") and time.time() < entry.get("retry_at", float("inf")):
+                return entry
+            weak = entry if entry and entry.get("weak") else None
+            if weak and (weak.get("rewriting") or time.time() < weak.get("retry_at", 0)):
+                return weak
         literal = translations.ensure(key, lines)
         if literal.get("status") not in ("ready", "failed", "none"):
-            return {"status": "loading", "label": "Translating the song"}
-        english = {}
+            return weak or {"status": "loading", "label": "Translating the song"}
+        english, from_weak = {}, False
         if literal.get("status") != "none":   # not English, so the story is written from the Natural translation
+            if weak and on_stand_in(literal):
+                return weak   # Google hasn't replaced the stand-in yet
             natural = naturals.ensure(key, lines, track)
+            if weak and (natural.get("weak") or natural.get("status") == "loading"):
+                return weak   # the Natural translation is being written again first
             if natural.get("status") == "loading":
                 return {"status": "loading", "label": "Working out what each line means", "done": natural.get("done", 0), "total": natural.get("total", len(lines))}
             # Without a Natural translation, the word-for-word one is the next best thing.
             english = natural.get("lines") or literal.get("lines") or {}
+            from_weak = on_stand_in(literal) or bool(natural.get("weak")) or natural.get("status") == "failed"
             if not english:
-                return {"status": "none"}
+                return weak or {"status": "none"}
         with self.lock:
-            if self.entries.get(key, {}).get("status") == "loading":
-                return self.entries[key]
-            entry = {"status": "loading", "label": "Writing what the song is about"}
-            self.entries[key] = entry
-        threading.Thread(target=self._write, args=(key, lines, english, track, saved), daemon=True).start()
+            current = self.entries.get(key, {})
+            if current.get("status") == "loading" or current.get("rewriting"):
+                return current
+            if weak:
+                weak["rewriting"] = True
+                entry = weak
+            else:
+                entry = {"status": "loading", "label": "Writing what the song is about"}
+                self.entries[key] = entry
+        threading.Thread(target=self._write, args=(key, lines, english, track, saved, from_weak), daemon=True).start()
         return entry
 
-    def _write(self, key, lines, english, track, saved):
+    def _write(self, key, lines, english, track, saved, weak=False):
+        with self.lock:
+            previous = self.entries.get(key)
+        rewriting = previous is not None and previous.get("rewriting")
         model = choose_writer()
         if not model:
             entry = {"status": "unavailable", "retry_at": time.time() + self.UNAVAILABLE_RETRY}
@@ -1863,13 +1941,20 @@ class StoryStore:
                 if not story:
                     raise ValueError("the reply had no usable story")
                 entry = {"status": "ready", **story, "version": WRITING_VERSION}
+                if weak:
+                    entry["weak"] = True
                 CACHE.mkdir(exist_ok=True)
                 saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
             except Exception as err:
                 print(f"story writing failed: {err}", flush=True)
                 entry = {"status": "failed", "retry_at": time.time() + self.FAILED_RETRY}
         with self.lock:
-            self.entries[key] = entry
+            if rewriting and entry["status"] in ("failed", "unavailable"):   # keep the weak story up, try later
+                previous.pop("rewriting", None)
+                previous["retry_at"] = entry["retry_at"]
+                return
+            if self.entries.get(key) is previous or not rewriting:
+                self.entries[key] = entry
 
 
 def ollama_chat(model, system, prompt, max_tokens, on_text=None, temperature=0.4):

@@ -34,6 +34,9 @@
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
   html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  /* A double-tap is ours (it opens the controls), so Safari must never take it as zoom: anywhere on the
+     page, the clock screen and the guide included. Pinch still zooms. */
+  html { touch-action: manipulation; }
   body {
     font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, Roboto, "Noto Sans", "Noto Sans Devanagari", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -662,7 +665,7 @@ function rest() {
 const STEP = 0.25;
 
 const view = { key: null, status: null, text: '', tapped: false, lines: [], plain: false, offset: 0, active: -2, plainY: null, art: null, roman: {}, english: {}, natural: {}, context: {}, translating: false, naturalizing: false, explaining: false, hasExtras: false,
-  wait: { literal: null, natural: null, context: null } };
+  wait: { literal: null, natural: null, context: null }, weak: { natural: false, context: false } };
 const clock = { pos: 0, at: performance.now(), running: false };
 let duration = 0, pausedSince = null, failures = 0, timingTimer = null;
 
@@ -773,7 +776,7 @@ const vis = {
 const touches = [];
 // The Story tab: what the song is about and its key line, written on the Mac, then the tidbits from Wikipedia.
 const tidbit = { key: null, status: '', items: [], facts: [], factStatus: '', index: 0, shown: 0, dwell: 8, step: 0, steps: 4, stepAt: 0, label: '', timer: 0 };
-const story = { status: '', items: [], label: '', done: 0, total: 0 };
+const story = { status: '', items: [], label: '', done: 0, total: 0, weak: false };
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const FALLBACK_PALETTE = { voice: [.98, .66, .4], music: [.26, .36, .86], deep: [.05, .06, .13] };
 const palette = {
@@ -804,6 +807,7 @@ function clearLyrics() {
   view.roman = {};
   view.english = {};
   view.natural = {};
+  view.weak = { natural: false, context: false };   // written from a stand-in: keep looking for the rewrite
   view.context = {};
   view.naturalizing = false;
   view.explaining = false;
@@ -2415,15 +2419,22 @@ function setNaturalizing(on) {
 }
 
 // The meaning-first translation, written on the Mac. The literal one stays up until it arrives.
+// One written from a stand-in translation comes back "weak": it shows, and the phone looks again
+// now and then, because the Mac writes it again once Google's translation arrives.
 async function loadNatural(key) {
   clearTimeout(view.naturalTimer);
-  if (view.key !== key || !extras.natural || Object.keys(view.natural).length) return;
+  if (view.key !== key || !extras.natural || (Object.keys(view.natural).length && !view.weak.natural)) return;
   let wait = 0;
   try {
     const res = await fetch(`/api/translation?key=${key}&style=natural`, { cache: 'no-store' });
     const data = await res.json();
     if (view.key !== key) return;
-    if (data.status === 'ready') { view.natural = data.lines; view.wait.natural = null; setNaturalizing(false); applyExtras(); return; }
+    if (data.status === 'ready') {
+      view.natural = data.lines; view.wait.natural = null; setNaturalizing(false); applyExtras();
+      view.weak.natural = !!data.weak;
+      if (data.weak) view.naturalTimer = setTimeout(() => loadNatural(key), 60000);
+      return;
+    }
     if (data.status === 'loading') { wait = 1200; view.wait.natural = { done: data.done || 0, total: data.total || 1 }; }
     else if (data.status === 'failed') wait = 30000;
   } catch { wait = 15000; }
@@ -2441,13 +2452,18 @@ function setExplaining(on) {
 // Notes on what lines mean in the song as a whole, written on the Mac after the translation.
 async function loadContext(key) {
   clearTimeout(view.contextTimer);
-  if (view.key !== key || !extras.context || Object.keys(view.context).length) return;
+  if (view.key !== key || !extras.context || (Object.keys(view.context).length && !view.weak.context)) return;
   let wait = 0;
   try {
     const res = await fetch(`/api/translation?key=${key}&style=context`, { cache: 'no-store' });
     const data = await res.json();
     if (view.key !== key) return;
-    if (data.status === 'ready') { view.context = data.lines; view.wait.context = null; setExplaining(false); applyExtras(); return; }
+    if (data.status === 'ready') {
+      view.context = data.lines; view.wait.context = null; setExplaining(false); applyExtras();
+      view.weak.context = !!data.weak;
+      if (data.weak) view.contextTimer = setTimeout(() => loadContext(key), 60000);
+      return;
+    }
     if (data.status === 'loading') { wait = 1200; view.wait.context = { done: data.done || 0, total: data.total || 1 }; }
     else if (data.status === 'failed') wait = 30000;
   } catch { wait = 15000; }
@@ -2504,6 +2520,7 @@ async function fetchStory(key) {
   story.label = data.label || '';
   story.done = data.done || 0;
   story.total = data.total || 0;
+  story.weak = !!data.weak;   // written from a stand-in translation: the Mac will write it again
   story.items = [];
   if (data.status !== 'ready') return;
   const credit = 'Written on your Mac from the song’s meaning';
@@ -2538,13 +2555,13 @@ async function loadTidbits() {
   clearTimeout(tidbit.timer);
   if (tidbit.key !== key) {
     Object.assign(tidbit, { key, status: 'loading', items: [], facts: [], factStatus: 'loading', index: 0, shown: 0, step: 0, steps: 4, stepAt: performance.now(), label: 'Looking up the song' });
-    Object.assign(story, { status: 'loading', items: [], label: '', done: 0, total: 0 });
+    Object.assign(story, { status: 'loading', items: [], label: '', done: 0, total: 0, weak: false });
     paintTidbits();
-  } else if (settled(story.status) && settled(tidbit.factStatus)) {
+  } else if (settled(story.status) && !story.weak && settled(tidbit.factStatus)) {
     return;
   }
   const jobs = [];
-  if (!settled(story.status)) jobs.push(fetchStory(key).catch(() => { if (tidbit.key === key) story.status = 'failed'; }));
+  if (!settled(story.status) || story.weak) jobs.push(fetchStory(key).catch(() => { if (tidbit.key === key) story.status = 'failed'; }));
   if (!settled(tidbit.factStatus)) jobs.push(fetchFacts(key).catch(() => { if (tidbit.key === key) tidbit.factStatus = 'failed'; }));
   await Promise.all(jobs);
   if (tidbit.key !== key) return;
@@ -2553,7 +2570,10 @@ async function loadTidbits() {
   const failed = story.status === 'failed' || tidbit.factStatus === 'failed';
   tidbit.status = tidbit.items.length ? 'ready' : loading ? 'loading' : failed ? 'failed' : 'none';
   paintTidbits();
-  if (settled(story.status) && settled(tidbit.factStatus)) return;
+  if (settled(story.status) && settled(tidbit.factStatus)) {
+    if (story.weak) tidbit.timer = setTimeout(loadTidbits, 60000);   // look for the rewritten story
+    return;
+  }
   tidbit.timer = setTimeout(loadTidbits, loading ? (tidbit.items.length ? 3000 : 800) : 20000);
 }
 
@@ -3248,6 +3268,18 @@ document.addEventListener('focusin', wake);
 wake();
 $('now').addEventListener('pointermove', pointerMove);
 $('now').addEventListener('pointerup', pointerEnd);
+// Backstop for Safari on iPhone, which can still zoom on a quick second tap where a touch-action
+// rule doesn't reach: cancelling the second touchend of a double-tap stops the zoom. Buttons and
+// the guide keep their own taps, and the controls open from pointerup above, which has already run.
+let lastTouchEnd = { at: -1e9, x: 0, y: 0 };
+document.addEventListener('touchend', event => {
+  const touch = event.changedTouches[0];
+  if (!touch || event.touches.length) return;
+  const near = Math.hypot(touch.clientX - lastTouchEnd.x, touch.clientY - lastTouchEnd.y) < 48;
+  const second = event.timeStamp - lastTouchEnd.at < 340 && near;
+  lastTouchEnd = second ? { at: -1e9, x: 0, y: 0 } : { at: event.timeStamp, x: touch.clientX, y: touch.clientY };
+  if (second && !event.target.closest('button, a, input, select, textarea, dialog')) event.preventDefault();
+}, { passive: false });
 $('now').addEventListener('pointercancel', pointerEnd);
 addEventListener('resize', () => { stageRect = null; placeActive(true); });
 
