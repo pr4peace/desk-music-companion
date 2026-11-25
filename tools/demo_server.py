@@ -50,9 +50,11 @@ SONG = [
 
 # What some lines mean in the song as a whole. Most lines need no note.
 CONTEXT = {
-    "चाय की प्याली हाथों में": "Tea here is the small daily ritual; the song is about noticing ordinary mornings.",
+    "चाय की प्याली हाथों में": "Tea here is the small daily ritual. The line before brings the sun to the window, and this "
+                               "one brings it into the singer's hands, so the warmth moves from the sky to the cup.",
     "मेज़ पे बैठा छोटा सा फ़ोन": "The phone is the listener's companion, the song half-jokingly singing about its own screen.",
-    "दिल में बजे मृदंग": "A mridang keeps rhythm in Carnatic music, so the heart becoming one means joy has a steady beat.",
+    "दिल में बजे मृदंग": "A mridang keeps rhythm in Carnatic music, so the heart becoming one means joy has a steady beat. "
+                         "It answers 'taal pe naache rang' just before: the colours dance to the beat, and the heart is the drum keeping it.",
     "मेज़ पे जलता रहे": "Jalta rahe is used for a lamp that keeps burning, so the song is a light left on through the evening.",
 }
 
