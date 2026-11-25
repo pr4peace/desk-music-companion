@@ -64,7 +64,9 @@ STORY = {
     "about": "A slow morning at a desk: sunlight, a cup of tea, and a song starting up on a little phone. "
              "By evening the singer is still there, and the song has become the light they keep on.",
     "key": {"line": "दिल में बजे मृदंग", "roman": "dil mein baje mridang", "english": "my heart keeps time like a drum",
-            "meaning": "The chorus lands here: the ordinary day has a rhythm now, and joy keeps time like a mridang."},
+            "meaning": "The chorus lands here. 'Taal pe naache rang' just before has the colours dancing to the beat, and this line "
+                       "turns the heart into the drum that keeps it, so the ordinary day now has a rhythm of its own. Baje means both "
+                       "'plays' and 'strikes', so the heart is both making the music and being struck by it."},
 }
 
 TIDBITS = [
