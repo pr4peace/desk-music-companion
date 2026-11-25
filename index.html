@@ -412,6 +412,8 @@
   }
   #now:not([data-tab="lyrics"]) #timing .tapsync { display: none; }
   #timing .tapsync[hidden] { display: none; }
+  #timing .tapsync.confirm { background: var(--drop); color: var(--text); }
+  #timing .tapsync:disabled { cursor: default; }
   #syncpad {
     position: fixed; left: var(--pad-x); right: var(--pad-x); bottom: calc(var(--pad-bottom) + 94px);
     display: grid; gap: 10px; padding: 14px; border-radius: 32px; color: var(--text);
@@ -606,6 +608,7 @@
       <button id="later" aria-label="Show lyrics later">+</button>
     </div>
     <button id="tap-sync" class="tapsync" hidden>Time these lyrics by tapping along</button>
+    <button id="share-sync" class="tapsync" aria-live="polite" hidden>Share this timing on LRCLIB</button>
   </div>
   <div id="syncpad" hidden>
     <p id="sync-note" aria-live="polite"></p>
@@ -2861,6 +2864,7 @@ async function loadLyrics(key, status) {
     if (data.status === 'synced') renderSynced(data.lines);
     else if (data.status === 'plain') renderPlain(data.text);
     showTapSync();
+    if (view.tapped) loadShare(key); else showShare();
     view.roman = data.roman || {};
     applyExtras();
     loadTranslation(key);
@@ -2878,6 +2882,8 @@ function showTrack(state, sent) {
     view.text = '';
     view.tapped = false;
     showTapSync();
+    share.confirming = false;
+    showShare();
     $('title').textContent = track.name;
     $('artist').textContent = track.artist;
     clearLyrics();
@@ -3058,6 +3064,7 @@ function changeOffset(delta) {
   offsetSaves.set(view.key, view.offset);
   saveOffset();
   showOffset();
+  if (view.tapped) setTimeout(() => loadShare(), 1500);   // the shared timing no longer matches
   revealTiming();
   tick();
 }
@@ -3133,6 +3140,63 @@ async function tapLine() {
   offsetSaves.delete(view.key);
   showOffset();
   if (view.key === sync.key) loadLyrics(sync.key, 'synced');
+  offerHint('share', 'Saved on your Mac. You can share it from the controls');
+}
+
+// Sharing tapped timing on LRCLIB, so everyone gets these lyrics in time. It's public, so it takes
+// two presses and never happens by itself. The Mac does the work; the phone asks how it's going.
+const share = { key: null, status: 'unavailable', confirming: false, timer: null, poll: null };
+
+function showShare() {
+  const button = $('share-sync');
+  const status = share.key === view.key ? share.status : 'unavailable';
+  button.hidden = !view.tapped || status === 'unavailable';
+  button.disabled = status === 'working' || status === 'shared';
+  button.classList.toggle('confirm', share.confirming);
+  button.textContent = share.confirming ? 'Tap again to share it publicly'
+    : status === 'working' ? 'Sharing on LRCLIB…'
+    : status === 'shared' ? 'Shared on LRCLIB'
+    : status === 'failed' ? "Couldn't share. Try again"
+    : 'Share this timing on LRCLIB';
+}
+
+async function loadShare(key = view.key) {
+  if (!key) return;
+  clearTimeout(share.poll);
+  try {
+    const res = await fetch('/api/share?key=' + encodeURIComponent(key), { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+    const data = await res.json();
+    if (view.key !== key) return;
+    share.key = key;
+    share.status = data.status;
+  } catch { return; }
+  showShare();
+  if (share.status === 'working') share.poll = setTimeout(() => loadShare(key), 2000);
+}
+
+async function pressShare() {
+  revealTiming();
+  clearTimeout(share.timer);
+  if (!share.confirming) {
+    share.confirming = true;
+    showShare();
+    share.timer = setTimeout(() => { share.confirming = false; showShare(); }, 5000);
+    return;
+  }
+  share.confirming = false;
+  const key = view.key;
+  Object.assign(share, { key, status: 'working' });
+  showShare();
+  try {
+    const res = await fetch('/api/share?key=' + encodeURIComponent(key), {
+      method: 'POST', headers: { 'X-Desk-Lyrics': '1' }, signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(res.status);
+  } catch {
+    if (view.key === key) { share.status = 'failed'; showShare(); }
+    return;
+  }
+  loadShare(key);
 }
 
 function undoTap() {
@@ -3172,6 +3236,7 @@ for (const button of document.querySelectorAll('#timing .context button')) {
   button.onclick = () => { if ((button.dataset.context === 'on') !== extras.context) setContext(!extras.context); else revealTiming(); };
 }
 $('tap-sync').onclick = startSync;
+$('share-sync').onclick = pressShare;
 $('sync-tap').addEventListener('pointerdown', event => { event.preventDefault(); tapLine(); });   // on touch, not release: closer to the beat
 $('sync-tap').addEventListener('keydown', event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); tapLine(); } });
 $('sync-undo').onclick = undoTap;

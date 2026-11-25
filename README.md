@@ -67,6 +67,8 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 
 **Time a song no lyrics site has timed.** Lyrics come from LRCLIB, and from NetEase when LRCLIB only has plain text. When neither has timing, the lyrics just scroll. In the controls, **Time these lyrics by tapping along**, play the song from the start, and tap once as each line begins (**Undo** takes back a tap). After the last line the Mac keeps the timing, so from then on every phone highlights the lines as they're sung. **Retime** is there if a tap landed badly.
 
+**Share your timing so everyone gets it.** Once you've tapped a song, **Share this timing on LRCLIB** appears in the controls. It publishes publicly, so it asks for a second tap first, and it never happens on its own. The Mac answers LRCLIB's small proof-of-work check (about 10 to 30 seconds), then sends the timing, with any **− / +** nudge applied, to the same LRCLIB entry the plain lyrics came from. The button then reads **Shared on LRCLIB**, and comes back if you retime or nudge the song later.
+
 <table>
   <tr>
     <td width="33%"><img src="docs/screenshots/controls.jpg" alt="The controls: play and skip buttons, In English letters On and Off, English Off, Literal and Natural, What it means On and Off, and the timing nudge"></td>
