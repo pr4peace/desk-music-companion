@@ -7,7 +7,8 @@ The song, its words, translations, cover and tidbits are all invented for this d
 visualizer hears is made up too: a steady beat, with a voice whenever a line is being sung.
 
     /demo/seek?t=42     jumps the song to 42 seconds
-    /demo/tidbits?status=loading|ready   shows the tidbits loading or ready
+    /demo/tidbits?status=loading|ready   shows the Story tab's tidbits loading or ready
+    /demo/story?status=loading|ready|none  shows the story at the top of the Story tab loading, ready or missing
     /demo/translating?seconds=20         acts as if the translations take that long, to see the progress ring
 """
 import json
@@ -53,6 +54,15 @@ CONTEXT = {
     "मेज़ पे बैठा छोटा सा फ़ोन": "The phone is the listener's companion, the song half-jokingly singing about its own screen.",
     "दिल में बजे मृदंग": "A mridang keeps rhythm in Carnatic music, so the heart becoming one means joy has a steady beat.",
     "मेज़ पे जलता रहे": "Jalta rahe is used for a lamp that keeps burning, so the song is a light left on through the evening.",
+}
+
+# The opening of the Story tab, as the Mac would write it from the Natural translation.
+STORY = {
+    "status": "ready",
+    "about": "A slow morning at a desk: sunlight, a cup of tea, and a song starting up on a little phone. "
+             "By evening the singer is still there, and the song has become the light they keep on.",
+    "key": {"line": "दिल में बजे मृदंग", "roman": "dil mein baje mridang", "english": "my heart keeps time like a drum",
+            "meaning": "The chorus lands here: the ordinary day has a rhythm now, and joy keeps time like a mridang."},
 }
 
 TIDBITS = [
@@ -115,6 +125,7 @@ class Player:
 
 player = Player()
 tidbit_status = {"value": "ready"}
+story_status = {"value": "ready"}
 slow = {"until": 0.0, "length": 1.0}
 
 
@@ -199,6 +210,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"status": "loading", "step": 2, "steps": 4, "label": "Reading about the song…"})
             else:
                 self.send_json({"status": "ready", "items": TIDBITS})
+        elif url.path == "/api/story":
+            if story_status["value"] == "loading":
+                self.send_json({"status": "loading", "label": "Working out what each line means", "done": 7, "total": 12})
+            else:
+                self.send_json(STORY if story_status["value"] == "ready" else {"status": story_status["value"]})
         elif url.path == "/api/levels":
             self.stream_levels()
         elif url.path == "/art":
@@ -213,6 +229,9 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/demo/tidbits":
             tidbit_status["value"] = query.get("status", ["ready"])[0]
             self.send_json(tidbit_status)
+        elif url.path == "/demo/story":
+            story_status["value"] = query.get("status", ["ready"])[0]
+            self.send_json(story_status)
         elif url.path in ("/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"):
             self.send((ROOT / "assets" / url.path.lstrip("/")).read_bytes(), "image/png")
         else:

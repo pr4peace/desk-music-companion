@@ -4,7 +4,7 @@
 
 <p align="center">Turn a spare iPhone into a little display that sits on your desk and follows whatever your Mac is playing.</p>
 
-Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone shows the album art and the lyrics in time with the music. Songs in Hindi, Tamil and other scripts get an English-letters version and an English translation. There's also a visualizer the lyrics are part of, and a tab of tidbits about the song, film or artist.
+Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone shows the album art and the lyrics in time with the music. Songs in Hindi, Tamil and other scripts get an English-letters version and an English translation. There's also a visualizer the lyrics are part of, and a Story tab that says what the song is about, then shares tidbits about the song, film or artist.
 
 ## See it
 
@@ -17,7 +17,7 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
   <tr>
     <td><b>Lyrics.</b> Each word lights up as it's sung. Below, the same line in English letters and what it means.</td>
     <td><b>Visualizer.</b> The song in the album's colours, with the line being sung in the middle.</td>
-    <td><b>Tidbits.</b> Facts and the odd joke about the song, as posters in its colours.</td>
+    <td><b>Story.</b> Facts and the odd joke about the song, as posters in its colours.</td>
   </tr>
 </table>
 
@@ -59,7 +59,7 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
   </tr>
 </table>
 
-**Find out about the song while it plays.** Open Tidbits for facts about the song, the film it's from and the people who made it. They're researched in the background, so they're usually ready by the time you look. Swipe sideways to flip through them.
+**Find out about the song while it plays.** Open Story for what the song is about and its key line, written on your Mac from the Natural translation, then facts about the song, the film it's from and the people who made it. They're researched in the background, so they're usually ready by the time you look. Swipe sideways to flip through them.
 
 **Control the music without reaching for the Mac.** Double-tap anywhere for play, pause, next and previous. Tap anywhere outside to put the controls away.
 
@@ -88,13 +88,13 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 |---|---|
 | **Lyrics** | The words scroll above; the current line's transliteration and English stay put below. In landscape the two sit side by side. English can be word for word or written for meaning. |
 | **Visualizer** | Five styles; swipe sideways to switch, and the row goes round. **Rings**: a full-screen picture in the album's colours, where the sung words give off light, a ring reacts to the music, and touch ripples and stirs it. **Kolam**: each verse draws its own South Indian kolam around a grid of dots, with beats rippling through the dots and light racing along the lines. **Words**: no lines of text, just each sung word landing big and then settling somewhere on the screen, so the song builds up into a poster of itself. Kolam patterns vary in shape, size, line and dot style, and are drawn fresh each time a song plays. **Diyas**: a clay oil lamp lights for each new line and stays lit, the line being sung burns tallest, and a returning chorus makes them all flare. **Vinyl**: the album cover spins as a record's label, the grooves light up with the music, the sung word circles the label, and the tone arm moves in across the record as the song plays. |
-| **Tidbits** | Full-screen poster cards in the album's colours with facts and a few jokes about this song, from Wikipedia. They're researched in the background once a song has played about 20 seconds, so they're usually ready when you open the tab. |
+| **Story** | Opens with what the song is about and its key line with what it means, written by the model on your Mac from the Natural translation. Then full-screen poster cards in the album's colours with facts and a few jokes about this song, from Wikipedia. They're researched in the background once a song has played about 20 seconds, so they're usually ready when you open the tab. |
 
 ## How to use
 
 Leave the phone on the desk with the app open and play music on the Mac. Everything follows along by itself: the song, the art, the lyrics and the colours.
 
-- **Switch views** with the tabs at the bottom: Lyrics, Visualizer and Tidbits.
+- **Switch views** with the tabs at the bottom: Lyrics, Visualizer and Story.
 - **Double-tap anywhere for controls.** Tap anywhere outside them, or double-tap again, to put them away; they also go on their own after a few seconds. They only show what applies to the tab you're on:
   - **Every tab:** previous, play/pause, next.
   - **Lyrics:** **In English letters** turns the transliteration on or off. **English** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). **What it means** adds a short note under lines whose meaning needs more than a translation. The first time Natural and the notes run on a song they take 20 to 50 seconds each, with a filling ring under the lyric to show how far along they are; the literal English shows meanwhile. **− / +** moves the lyrics a quarter second earlier or later if they drift, and the label says where they are; tap it to put them back on time. It's remembered for that song.
@@ -103,7 +103,7 @@ Leave the phone on the desk with the app open and play music on the Mac. Everyth
 - **Left alone,** after 8 seconds the tabs and progress bar fade and the title dims. Any touch, a new song or a pause brings them back.
 - **Visualizer styles:** swipe sideways to switch between **Rings**, **Kolam**, **Words**, **Diyas** and **Vinyl**. The glass pill at the top shows the one that's on with its neighbours either side, and slides along as you swipe; past the last style it comes back round to the first. You can tap the neighbours too. In Rings, touching the screen ripples and stirs the picture. In Kolam, it lights up the dots under your finger.
 - **Progress bar:** the brighter stretches are where the singing is, with elapsed and remaining time on either side.
-- **Tidbits:** they're researched in the background about 20 seconds into each song. If you open the tab sooner, a loading bar shows the progress. Cards rotate on their own; swipe sideways to flip through them.
+- **Story:** the opening cards are written when you first open the tab, after the Natural translation (so the first look at a new song can take a minute). The tidbits are researched in the background about 20 seconds into each song. If you open the tab sooner, a loading bar shows the progress. Cards rotate on their own; swipe sideways to flip through them.
 - **Mac menu bar:** the ring icon shows what's playing and the phone's address, and can start, stop or restart the server.
 - **Lyrics feel off?** On the Mac, run `python3 tools/check_sync.py` during a sung part. It says whether the lyrics are in sync, early or late, or the wrong version.
 
@@ -176,7 +176,7 @@ Together they take about 4 GB. Without them, Google translates, and when Google 
 
 ### 4. Optional: a local model
 
-Tidbits work without this, but the funny ones, and the **Natural** translation option (English that says what each line means instead of word for word), need a model running on your own Mac through [Ollama](https://ollama.com):
+Tidbits work without this, but the funny ones, the opening of the Story tab, and the **Natural** translation option (English that says what each line means instead of word for word), need a model running on your own Mac through [Ollama](https://ollama.com):
 
 ```bash
 ollama pull qwen3.5:9b
