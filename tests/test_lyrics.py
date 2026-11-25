@@ -103,6 +103,23 @@ class Matching(unittest.TestCase):
         self.assertTrue(self.check(record("Hey Jude", "The Beatles", 426), playing))
         self.assertFalse(self.check(record("Hey Jude", "The Beatles", 420), playing))
 
+    def test_music_app_allows_ten_seconds_when_title_and_artist_agree(self):
+        playing = track("Karpoora Bommai", "Ilaiyaraaja", 285.8, album="Kelladi Kanmani")
+        self.assertTrue(self.check(record("Karpoora Bommai", "Ilaiyaraaja", 293), playing))
+        self.assertFalse(self.check(record("Karpoora Bommai", "Ilaiyaraaja", 297), playing))
+
+    def test_wider_window_needs_the_exact_title(self):
+        playing = track("Karpoora Bommai", "Ilaiyaraaja", 285.8)
+        self.assertFalse(self.check(record("Karpoora Bommai Ondru", "Ilaiyaraaja", 293), playing))
+        self.assertTrue(self.check(record("Karpoora Bommai Ondru", "Ilaiyaraaja", 289), playing))
+
+    def test_longer_listing_is_used_when_its_lines_fit_the_song(self):
+        playing = track("Karpoora Bommai", "Ilaiyaraaja", 285.8)
+        fits = record("Karpoora Bommai", "Ilaiyaraaja", 293, synced="[00:20.00]a\n[04:26.00]b")
+        longer_cut = record("Karpoora Bommai", "Ilaiyaraaja", 293, synced="[00:20.00]a\n[04:50.00]b")
+        self.assertTrue(server.timing_fits(fits, playing))
+        self.assertFalse(server.timing_fits(longer_cut, playing))
+
     def test_video_allows_twelve_seconds(self):
         playing = track("The Beatles - Hey Jude", "The Beatles", 431, loose=True)
         self.assertTrue(self.check(record("Hey Jude", "The Beatles", 420), playing))
