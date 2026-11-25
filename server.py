@@ -697,12 +697,87 @@ class LyricsStore:
             translations.entries.pop(key, None)
             naturals.entries.pop(key, None)
             contexts.entries.pop(key, None)
+            timing.forget(key)   # the nudge was for the old lines' timings
         saved.write_text(json.dumps(entry, ensure_ascii=False), "utf-8")
         self._set(key, entry)
 
     def _set(self, key, entry):
         with self.lock:
             self.entries[key] = entry
+
+
+# --- Timing nudges -----------------------------------------------------------
+
+# Kept beside server.py rather than in cache/, because these are choices someone made, not
+# downloads, and clearing the cache shouldn't lose them.
+TIMING = ROOT / "timing.json"
+MAX_NUDGE = 30.0   # seconds either way; anything more is a wrong match, not drift
+
+
+def song_key(text):
+    return bool(re.fullmatch(r"[0-9a-f]{16}", text or ""))
+
+
+def nudge_value(value):
+    """A nudge in seconds, rounded to hundredths and kept in range, or None if it isn't a number."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):
+        return None
+    return round(max(-MAX_NUDGE, min(MAX_NUDGE, value)), 2)
+
+
+class TimingStore:
+    """The − / + lyric nudge for each song, saved on the Mac so every phone gets it and it
+    survives the page being removed from a phone's Home Screen."""
+
+    def __init__(self, path):
+        self.path = path
+        self.lock = threading.Lock()
+        self.offsets = {}
+        try:
+            saved = json.loads(path.read_text("utf-8"))
+        except (OSError, ValueError):
+            return
+        if isinstance(saved, dict):
+            for key, value in saved.items():
+                value = nudge_value(value)
+                if song_key(key) and value:
+                    self.offsets[key] = value
+
+    def get(self, key):
+        with self.lock:
+            return self.offsets.get(key, 0)
+
+    def set(self, key, value):
+        with self.lock:
+            if value:
+                self.offsets[key] = value
+            elif self.offsets.pop(key, None) is None:
+                return
+            self._save()
+
+    def adopt(self, offsets):
+        """Takes nudges a phone remembered on its own, keeping any the Mac already has."""
+        with self.lock:
+            fresh = {k: v for k, v in offsets.items() if k not in self.offsets}
+            if fresh:
+                self.offsets.update(fresh)
+                self._save()
+            return len(fresh)
+
+    def forget(self, key):
+        self.set(key, 0)
+
+    def _save(self):
+        temporary = self.path.with_suffix(".tmp")
+        try:
+            temporary.write_text(json.dumps(self.offsets, indent=1, sort_keys=True), "utf-8")
+            temporary.replace(self.path)   # a crash mid-write never leaves half a file
+        except OSError as err:   # still right for this run; it just won't outlast a restart
+            print(f"couldn't save lyric timing: {err}", flush=True)
 
 
 # --- Transliteration and translation ----------------------------------------
@@ -1630,6 +1705,7 @@ translations = TranslationStore()
 naturals = WrittenStore("natural", natural_lines)
 contexts = WrittenStore("context", context_notes)
 tidbits = TidbitStore()
+timing = TimingStore(TIMING)
 
 
 def current_player():
@@ -1660,6 +1736,7 @@ def build_state():
         "artist": player["artist"],
         "album": player["album"],
         "duration": player["duration"],
+        "offset": timing.get(key),
     }
     # Research tidbits in the background once a song has played a while, so they're ready
     # when the tab opens. Songs skipped in the first seconds aren't worth the work.
@@ -1771,15 +1848,43 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             audio_levels.leave()
 
+    def read_json(self, limit=65536):
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return None
+        if not 0 < length <= limit:
+            return None
+        try:
+            return json.loads(self.rfile.read(length))
+        except ValueError:
+            return None
+
     def do_POST(self):
         url = urllib.parse.urlparse(self.path)
-        action = urllib.parse.parse_qs(url.query).get("action", [""])[0]
-        if url.path != "/api/control" or action not in MEDIA_COMMANDS:
-            self.send(b"Not found", "text/plain", 404)
-        elif self.headers.get("X-Desk-Lyrics") != "1":   # stops other websites from sending commands
+        query = urllib.parse.parse_qs(url.query)
+        if self.headers.get("X-Desk-Lyrics") != "1":   # stops other websites from sending commands
             self.send(b"Forbidden", "text/plain", 403)
+        elif url.path == "/api/control" and query.get("action", [""])[0] in MEDIA_COMMANDS:
+            self.send_json({"ok": control(query["action"][0])})
+        elif url.path == "/api/timing":
+            key = query.get("key", [""])[0]
+            value = nudge_value(query.get("offset", [""])[0])
+            if not song_key(key) or value is None:
+                self.send_json({"ok": False}, 400)
+            else:
+                timing.set(key, value)
+                self.send_json({"ok": True, "offset": value})
+        elif url.path == "/api/timing/import":
+            # Phones from before nudges lived on the Mac hand over what they remembered, once.
+            body = self.read_json()
+            if not isinstance(body, dict):
+                self.send_json({"ok": False}, 400)
+            else:
+                offsets = {k: nudge_value(v) for k, v in body.items() if song_key(k)}
+                self.send_json({"ok": True, "added": timing.adopt({k: v for k, v in offsets.items() if v})})
         else:
-            self.send_json({"ok": control(action)})
+            self.send(b"Not found", "text/plain", 404)
 
     def do_GET(self):
         url = urllib.parse.urlparse(self.path)

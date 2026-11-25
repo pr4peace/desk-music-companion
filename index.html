@@ -581,8 +581,52 @@ function retireHint(name) {
   store(s => s.setItem('hint:' + name, String(HINT_SHOWS)));
   if ($('hint').dataset.name === name) hideHint();
 }
-const loadOffset = key => Number(store(s => s.getItem('offset:' + key))) || 0;
-const saveOffset = (key, v) => store(s => v ? s.setItem('offset:' + key, v) : s.removeItem('offset:' + key));
+// The − / + nudge lives on the Mac, so every phone shares it. Changes wait here, one per song, until the
+// Mac has them, and until then the phone trusts its own value over what the Mac last reported. They go
+// one at a time, so an older value can never land after a newer one.
+const offsetSaves = new Map();
+let offsetSending = false, offsetSavedAt = 0;
+async function saveOffset() {
+  if (offsetSending || !offsetSaves.size) return;
+  offsetSending = true;
+  let reached = true;
+  for (const [key, value] of [...offsetSaves]) {
+    try {
+      const res = await fetch(`/api/timing?key=${encodeURIComponent(key)}&offset=${value}`, {
+        method: 'POST', headers: { 'X-Desk-Lyrics': '1' }, signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok && res.status !== 400) { reached = false; break; }   // 400 means the Mac will never take it
+      if (offsetSaves.get(key) === value) offsetSaves.delete(key);
+      offsetSavedAt = performance.now();
+    } catch { reached = false; break; }   // the next poll tries again
+  }
+  offsetSending = false;
+  if (reached) saveOffset();   // sends anything changed while these were on their way
+}
+// The Mac's nudge for this song, unless a change made here hasn't reached it yet or the reading predates it.
+function offsetFromMac(track, sent) {
+  if (offsetSaves.has(track.key)) return offsetSaves.get(track.key);
+  if (sent < offsetSavedAt) return view.offset;
+  return track.offset || 0;
+}
+// Phones used to keep nudges to themselves. Hand any they still have to the Mac, once.
+async function moveOffsetsToMac() {
+  const saved = {};
+  store(s => {
+    for (let i = 0; i < s.length; i++) {
+      const name = s.key(i);
+      if (name?.startsWith('offset:')) saved[name.slice(7)] = Number(s.getItem(name)) || 0;
+    }
+  });
+  if (!Object.keys(saved).length) return;
+  try {
+    const res = await fetch('/api/timing/import', {
+      method: 'POST', headers: { 'X-Desk-Lyrics': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(saved), signal: AbortSignal.timeout(6000),
+    });
+    if (res.ok) store(s => { for (const key in saved) s.removeItem('offset:' + key); });
+  } catch { /* tried again next time the page opens */ }
+}
 const extras = {
   roman: store(s => s.getItem('show:roman')) !== '0',
   english: store(s => s.getItem('show:english')) !== '0',
@@ -2627,12 +2671,12 @@ async function loadLyrics(key, status) {
   } catch { view.status = null; }   // the next poll asks again
 }
 
-function showTrack(state) {
+function showTrack(state, sent) {
   const track = state.track;
   if (view.key !== track.key) {
     view.key = track.key;
     view.status = null;
-    view.offset = loadOffset(track.key);
+    view.offset = offsetSaves.has(track.key) ? offsetSaves.get(track.key) : track.offset || 0;
     $('title').textContent = track.name;
     $('artist').textContent = track.artist;
     clearLyrics();
@@ -2642,6 +2686,9 @@ function showTrack(state) {
     loadTidbits();
     wake();
     setTimeout(() => offerHint('controls', 'Double-tap for controls'), 7000);
+  } else {
+    const offset = offsetFromMac(track, sent);   // another phone may have nudged this song
+    if (offset !== view.offset) { view.offset = offset; showOffset(); tick(); }
   }
   const art = state.art || null;
   if (art !== view.art) {
@@ -2683,7 +2730,7 @@ function apply(state, sent) {
   const playing = state.state === 'playing';
   const trip = (performance.now() - sent) / 1000;
   syncClock(state.position + (playing ? state.age + trip / 2 : 0), playing);
-  showTrack(state);
+  showTrack(state, sent);
 
   pausedSince = playing ? null : (pausedSince ?? Date.now());
   if (vis.playing && !playing) wake();
@@ -2720,6 +2767,7 @@ async function poll() {
     const state = await res.json();
     reloadIfNewer(state.page);
     apply(state, sent);
+    saveOffset();   // retries a nudge the Mac didn't get
     failures = 0;
   } catch {
     failures++;
@@ -2786,7 +2834,8 @@ function toggleControls() {
 
 function changeOffset(delta) {
   view.offset = Math.round((view.offset + delta) * 100) / 100;
-  saveOffset(view.key, view.offset);
+  offsetSaves.set(view.key, view.offset);
+  saveOffset();
   showOffset();
   revealTiming();
   tick();
@@ -2852,6 +2901,7 @@ showClock();
 setInterval(showClock, 1000);
 setInterval(driftIdle, 60000);
 setInterval(tick, 100);
+moveOffsetsToMac();
 poll();
 </script>
 </body>
