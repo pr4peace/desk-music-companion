@@ -1637,6 +1637,7 @@ class TranslationStore:
 
 
 WRITING_VERSION = 2   # raise when the prompts change enough that saved writing should be redone
+NOTES_VERSION = 3     # the "What it means" notes and the story's key line, since they got longer and look around each line
 
 
 def on_stand_in(literal):
@@ -1667,9 +1668,10 @@ class WrittenStore:
     FAILED_RETRY = 120
     UNAVAILABLE_RETRY = 600
 
-    def __init__(self, name, writer):
+    def __init__(self, name, writer, version=WRITING_VERSION):
         self.name = name
         self.writer = writer
+        self.version = version
         self.lock = threading.Lock()
         self.entries = {}
 
@@ -1679,7 +1681,7 @@ class WrittenStore:
             entry = self.entries.get(key)
             if not entry and saved.exists():
                 entry = json.loads(saved.read_text("utf-8"))
-                if entry.get("version") == WRITING_VERSION or self.name != "natural":
+                if entry.get("version") == self.version:
                     if "weak" not in entry and built_before_upgrade(saved, key):
                         entry["weak"] = True
                     self.entries[key] = entry
@@ -1735,7 +1737,7 @@ class WrittenStore:
             try:
                 with tidbits.writing:   # one job at a time on the local model
                     written = self.writer(model, lines, literal, track, lambda done: self._progress(key, done))
-                entry = {"status": "ready" if written else "none", "lines": written, "version": WRITING_VERSION}
+                entry = {"status": "ready" if written else "none", "lines": written, "version": self.version}
                 if weak:
                     entry["weak"] = True
                 CACHE.mkdir(exist_ok=True)
@@ -1804,20 +1806,24 @@ def context_notes(model, lines, literal, track, progress=None):
         f"Song: \"{track.get('name', '')}\" by {track.get('artist', '')}.\n\n"
         "Each numbered line shows the lyric, how it sounds, and English translations where available.\n\n"
         f"{numbered}\n\n"
-        "Read the whole song first. Then, for the lines where a translation alone loses something, write one short note "
-        "(at most 18 words) on what the line really means here: an idiom, a metaphor and what it stands for, a cultural "
-        "or religious reference, wordplay or a double meaning, who is speaking to whom, or how it answers an earlier line. "
-        "Say the meaning, not the words again. Don't repeat the translation, don't praise the song, and skip lines that "
-        "are plain or already clear. A repeated line gets a note only the first time. Never invent facts about the singers or the film.\n"
+        "Read the whole song first. Then, for the lines where a translation alone loses something, write a note of two or "
+        "three short sentences (at most 45 words) on what the line really means here. Read it together with the lines just "
+        "before and after it: say what it picks up from the line before, what it sets up or answers in the line after, and "
+        "how the meaning builds across them. Songs often play on words, so look for a word that means two things, a word "
+        "that sounds like another, or a phrase that turns around in the next line; when there is one, name the word in "
+        "English letters and give both meanings. Also explain an idiom, a metaphor and what it stands for, a cultural or "
+        "religious reference, or who is speaking to whom. Say the meaning, not the words again. Don't repeat the "
+        "translation, don't praise the song, and skip lines that are plain or already clear. A repeated line gets a note "
+        "only the first time. Never invent facts about the singers or the film.\n"
         'Reply with only JSON: {"lines": [{"n": 3, "note": "..."}]}'
     )
-    reply = ollama_chat(model, "You explain song lyrics to an English speaker the way a friend who grew up with the language would.", prompt, 2500,
+    reply = ollama_chat(model, "You explain song lyrics to an English speaker the way a friend who grew up with the language would.", prompt, 4500,
                         on_text=progress and (lambda text: progress(lines_written(text))))
     rows = numbered_lines(reply, len(lines), field="note")
     result = {}
     for n, text in rows.items():
         line = lines[n - 1]
-        if line not in result and 8 <= len(text) <= 160:
+        if line not in result and 8 <= len(text) <= 340:
             result[line] = text
     return result
 
@@ -1843,11 +1849,13 @@ def song_story(model, lines, english, track):
         "- about: two or three short sentences on what the song is about and how it feels, for someone who "
         "doesn't speak the language. Who is singing to whom, what happens, what it comes back to. Plain words, no praise.\n"
         "- key: the number of the one line that carries the song, usually the hook or the line everything turns on.\n"
-        "- meaning: one or two sentences on what that line means in the song, beyond its translation.\n"
+        "- meaning: two to four sentences on what that line means in the song, beyond its translation. Read it with the "
+        "lines just before and after it and say how they lead into it and what it turns into. If it plays on words, "
+        "name the word in English letters and give both meanings.\n"
         "Use only what is in the lyrics. Never invent facts about the singers, the film or the story around it.\n"
         'Reply with only JSON: {"about": "...", "key": 3, "meaning": "..."}'
     )
-    reply = ollama_chat(model, "You explain songs to an English speaker the way a friend who grew up with the language would.", prompt, 700)
+    reply = ollama_chat(model, "You explain songs to an English speaker the way a friend who grew up with the language would.", prompt, 1000)
     start, end = reply.find("{"), reply.rfind("}")
     try:
         found = json.loads(reply[start:end + 1])
@@ -1862,7 +1870,7 @@ def song_story(model, lines, english, track):
     except (TypeError, ValueError):
         n = 0
     meaning = str(found.get("meaning", "")).strip()
-    if 1 <= n <= len(lines) and 8 <= len(meaning) <= 300:
+    if 1 <= n <= len(lines) and 8 <= len(meaning) <= 520:
         line = lines[n - 1]
         story["key"] = {"line": line, "roman": (romanize(line) or "").strip() or None, "english": english.get(line), "meaning": meaning}
     return story
@@ -1886,7 +1894,7 @@ class StoryStore:
             entry = self.entries.get(key)
             if not entry and saved.exists():
                 entry = json.loads(saved.read_text("utf-8"))
-                if entry.get("version") == WRITING_VERSION:
+                if entry.get("version") == NOTES_VERSION:
                     if "weak" not in entry and built_before_upgrade(saved, key):
                         entry["weak"] = True
                     self.entries[key] = entry
@@ -1940,7 +1948,7 @@ class StoryStore:
                     story = song_story(model, lines, english, track)
                 if not story:
                     raise ValueError("the reply had no usable story")
-                entry = {"status": "ready", **story, "version": WRITING_VERSION}
+                entry = {"status": "ready", **story, "version": NOTES_VERSION}
                 if weak:
                     entry["weak"] = True
                 CACHE.mkdir(exist_ok=True)
@@ -2377,7 +2385,7 @@ safari_youtube = SafariYouTube()
 lyrics_store = LyricsStore()
 translations = TranslationStore()
 naturals = WrittenStore("natural", natural_lines)
-contexts = WrittenStore("context", context_notes)
+contexts = WrittenStore("context", context_notes, NOTES_VERSION)
 stories = StoryStore()
 tidbits = TidbitStore()
 timing = TimingStore(TIMING)

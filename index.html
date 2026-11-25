@@ -2672,6 +2672,13 @@ function showTidbit(index) {
     size -= 2;
     head.style.fontSize = size + 'px';
   }
+  // A long meaning can still overflow once the headline is as small as it goes: shrink the text under it too.
+  text.style.fontSize = '';
+  let textSize = parseFloat(getComputedStyle(text).fontSize);
+  while (textSize > 14 && $('tb-show').offsetHeight > $('stage').clientHeight * .96) {
+    textSize -= 1;
+    text.style.fontSize = textSize + 'px';
+  }
   if (!calmMotion.matches && item.headline) {
     text.animate({ opacity: [0, 1], transform: ['translateY(12px)', 'none'] }, { duration: 460, delay: 320, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'backwards' });
   }
