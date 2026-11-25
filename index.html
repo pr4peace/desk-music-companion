@@ -225,7 +225,7 @@
     --glass: rgba(20, 17, 13, .12); --drop: linear-gradient(180deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .3));
     --panel: rgba(255, 255, 255, .46); --well: rgba(20, 17, 13, .1);
   }
-  #title, #artist, #elapsed, #remain, #tabs button, #tb-source { transition: color .3s ease; }
+  #title, #artist, #elapsed, #remain, #tabs button, #tb-source, #tb-kicker, #tb-orig { transition: color .3s ease; }
 
   #tidbits { position: absolute; inset: 0; display: grid; align-content: center; gap: 18px; }
   #tb-head {
@@ -240,6 +240,10 @@
   #tb-fill { display: block; height: 100%; background: var(--text); transform-origin: left; transform: scaleX(0); transition: transform .2s linear; }
   #tb-text { font-size: clamp(20px, 5.5vw, 30px); font-weight: 560; line-height: 1.28; text-wrap: pretty; margin-bottom: 18px; }
   #tb-text:empty { display: none; }
+  #tb-kicker { font-size: 15px; font-weight: 650; letter-spacing: .02em; color: var(--muted); margin-bottom: -4px; }
+  #tb-kicker:empty, #tb-orig:empty { display: none; }
+  /* The key line as it's sung, under what it means. */
+  #tb-orig { font-size: clamp(17px, 4.6vw, 24px); font-weight: 560; line-height: 1.3; color: var(--muted); margin-top: -.4em; margin-bottom: 14px; }
   #tb-source { font-size: 14px; font-weight: 550; color: var(--muted); margin-bottom: 12px; }
   #tb-dots { display: flex; gap: 6px; margin-top: 4px; }
   #tb-dots i { flex: 1; height: 3px; border-radius: 3px; background: var(--hair); overflow: hidden; }
@@ -453,7 +457,7 @@
     </div>
     <div id="tidbits">
       <div id="tb-load"><p id="tb-label"></p><span id="tb-track"><span id="tb-fill"></span></span></div>
-      <div id="tb-show" hidden><h2 id="tb-head" dir="auto"></h2><p id="tb-text" dir="auto"></p><p id="tb-source"></p><div id="tb-dots"></div></div>
+      <div id="tb-show" hidden><p id="tb-kicker"></p><h2 id="tb-head" dir="auto"></h2><p id="tb-orig" dir="auto"></p><p id="tb-text" dir="auto"></p><p id="tb-source"></p><div id="tb-dots"></div></div>
       <p id="tb-note" hidden></p>
     </div>
   </section>
@@ -477,7 +481,7 @@
       <span id="tab-drop" aria-hidden="true"></span>
       <button id="tab-lyrics" role="tab" aria-selected="true">Lyrics</button>
       <button id="tab-vis" role="tab" aria-selected="false">Visualizer</button>
-      <button id="tab-tidbits" role="tab" aria-selected="false">Tidbits</button>
+      <button id="tab-tidbits" role="tab" aria-selected="false">Story</button>
     </nav>
   </footer>
   <div id="timing" class="off" inert>
@@ -581,8 +585,52 @@ function retireHint(name) {
   store(s => s.setItem('hint:' + name, String(HINT_SHOWS)));
   if ($('hint').dataset.name === name) hideHint();
 }
-const loadOffset = key => Number(store(s => s.getItem('offset:' + key))) || 0;
-const saveOffset = (key, v) => store(s => v ? s.setItem('offset:' + key, v) : s.removeItem('offset:' + key));
+// The − / + nudge lives on the Mac, so every phone shares it. Changes wait here, one per song, until the
+// Mac has them, and until then the phone trusts its own value over what the Mac last reported. They go
+// one at a time, so an older value can never land after a newer one.
+const offsetSaves = new Map();
+let offsetSending = false, offsetSavedAt = 0;
+async function saveOffset() {
+  if (offsetSending || !offsetSaves.size) return;
+  offsetSending = true;
+  let reached = true;
+  for (const [key, value] of [...offsetSaves]) {
+    try {
+      const res = await fetch(`/api/timing?key=${encodeURIComponent(key)}&offset=${value}`, {
+        method: 'POST', headers: { 'X-Desk-Lyrics': '1' }, signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok && res.status !== 400) { reached = false; break; }   // 400 means the Mac will never take it
+      if (offsetSaves.get(key) === value) offsetSaves.delete(key);
+      offsetSavedAt = performance.now();
+    } catch { reached = false; break; }   // the next poll tries again
+  }
+  offsetSending = false;
+  if (reached) saveOffset();   // sends anything changed while these were on their way
+}
+// The Mac's nudge for this song, unless a change made here hasn't reached it yet or the reading predates it.
+function offsetFromMac(track, sent) {
+  if (offsetSaves.has(track.key)) return offsetSaves.get(track.key);
+  if (sent < offsetSavedAt) return view.offset;
+  return track.offset || 0;
+}
+// Phones used to keep nudges to themselves. Hand any they still have to the Mac, once.
+async function moveOffsetsToMac() {
+  const saved = {};
+  store(s => {
+    for (let i = 0; i < s.length; i++) {
+      const name = s.key(i);
+      if (name?.startsWith('offset:')) saved[name.slice(7)] = Number(s.getItem(name)) || 0;
+    }
+  });
+  if (!Object.keys(saved).length) return;
+  try {
+    const res = await fetch('/api/timing/import', {
+      method: 'POST', headers: { 'X-Desk-Lyrics': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(saved), signal: AbortSignal.timeout(6000),
+    });
+    if (res.ok) store(s => { for (const key in saved) s.removeItem('offset:' + key); });
+  } catch { /* tried again next time the page opens */ }
+}
 const extras = {
   roman: store(s => s.getItem('show:roman')) !== '0',
   english: store(s => s.getItem('show:english')) !== '0',
@@ -599,7 +647,9 @@ const vis = {
   noScene: false, ripples: [], artBlend: 1,
 };
 const touches = [];
-const tidbit = { key: null, status: '', items: [], index: 0, shown: 0, dwell: 8, step: 0, steps: 4, stepAt: 0, label: '', timer: 0 };
+// The Story tab: what the song is about and its key line, written on the Mac, then the tidbits from Wikipedia.
+const tidbit = { key: null, status: '', items: [], facts: [], factStatus: '', index: 0, shown: 0, dwell: 8, step: 0, steps: 4, stepAt: 0, label: '', timer: 0 };
+const story = { status: '', items: [], label: '', done: 0, total: 0 };
 const calmMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const FALLBACK_PALETTE = { voice: [.98, .66, .4], music: [.26, .36, .86], deep: [.05, .06, .13] };
 const palette = {
@@ -2311,40 +2361,68 @@ function setContext(on) {
   revealTiming();
 }
 
-// --- Tidbits -------------------------------------------------------------------
+// --- Story ---------------------------------------------------------------------
+// The tab opens with what the song is about and its key line, which the Mac writes from the
+// Natural translation, then the tidbits. Each half loads on its own and shows when it's ready.
+
+async function fetchStory(key) {
+  const data = await (await fetch('/api/story?key=' + key, { cache: 'no-store' })).json();
+  if (tidbit.key !== key) return;   // the song changed while this was on its way
+  story.status = data.status;
+  story.label = data.label || '';
+  story.done = data.done || 0;
+  story.total = data.total || 0;
+  story.items = [];
+  if (data.status !== 'ready') return;
+  const credit = 'Written on your Mac from the song’s meaning';
+  if (data.about) story.items.push({ kind: 'story', headline: 'What it’s about', text: data.about, credit });
+  if (data.key) {
+    const { line, roman, english, meaning } = data.key;
+    story.items.push({
+      kind: 'story', kicker: 'The key line', headline: english || line, text: meaning, credit,
+      orig: english ? [line, roman].filter(Boolean).join(' · ') : '',
+    });
+  }
+}
+
+async function fetchFacts(key) {
+  const data = await (await fetch('/api/tidbits?key=' + key, { cache: 'no-store' })).json();
+  if (tidbit.key !== key) return;   // the song changed while this was on its way
+  tidbit.factStatus = data.status;
+  if (data.status === 'loading') {
+    if (data.step !== tidbit.step) { tidbit.step = data.step; tidbit.stepAt = performance.now(); }
+    tidbit.steps = data.steps;
+    tidbit.label = data.label;
+  } else if (data.status === 'ready') {
+    tidbit.facts = data.items;
+  }
+}
+
+const settled = status => ['ready', 'none', 'unavailable'].includes(status);
 
 async function loadTidbits() {
   if (activeTab !== 'tidbits' || !view.key) return;
   const key = view.key;
   clearTimeout(tidbit.timer);
   if (tidbit.key !== key) {
-    Object.assign(tidbit, { key, status: 'loading', items: [], index: 0, shown: 0, step: 0, steps: 4, stepAt: performance.now(), label: 'Looking up the song' });
+    Object.assign(tidbit, { key, status: 'loading', items: [], facts: [], factStatus: 'loading', index: 0, shown: 0, step: 0, steps: 4, stepAt: performance.now(), label: 'Looking up the song' });
+    Object.assign(story, { status: 'loading', items: [], label: '', done: 0, total: 0 });
     paintTidbits();
-  } else if (tidbit.status === 'ready' || tidbit.status === 'none') {
+  } else if (settled(story.status) && settled(tidbit.factStatus)) {
     return;
   }
-  let wait = 20000;
-  try {
-    const res = await fetch('/api/tidbits?key=' + key, { cache: 'no-store' });
-    const data = await res.json();
-    if (tidbit.key !== key) return;
-    tidbit.status = data.status;
-    if (data.status === 'loading') {
-      if (data.step !== tidbit.step) { tidbit.step = data.step; tidbit.stepAt = performance.now(); }
-      tidbit.steps = data.steps;
-      tidbit.label = data.label;
-      wait = 500;
-    } else if (data.status === 'ready') {
-      tidbit.items = data.items;
-    }
-    paintTidbits();
-    if (data.status === 'ready' || data.status === 'none') return;
-  } catch {
-    if (tidbit.key !== key) return;
-    tidbit.status = 'failed';
-    paintTidbits();
-  }
-  tidbit.timer = setTimeout(loadTidbits, wait);
+  const jobs = [];
+  if (!settled(story.status)) jobs.push(fetchStory(key).catch(() => { if (tidbit.key === key) story.status = 'failed'; }));
+  if (!settled(tidbit.factStatus)) jobs.push(fetchFacts(key).catch(() => { if (tidbit.key === key) tidbit.factStatus = 'failed'; }));
+  await Promise.all(jobs);
+  if (tidbit.key !== key) return;
+  tidbit.items = [...story.items, ...tidbit.facts];
+  const loading = story.status === 'loading' || tidbit.factStatus === 'loading';
+  const failed = story.status === 'failed' || tidbit.factStatus === 'failed';
+  tidbit.status = tidbit.items.length ? 'ready' : loading ? 'loading' : failed ? 'failed' : 'none';
+  paintTidbits();
+  if (settled(story.status) && settled(tidbit.factStatus)) return;
+  tidbit.timer = setTimeout(loadTidbits, loading ? (tidbit.items.length ? 3000 : 800) : 20000);
 }
 
 function syncFlood() {
@@ -2358,13 +2436,24 @@ function paintTidbits() {
   $('tb-load').hidden = !loading;
   $('tb-show').hidden = !ready;
   $('tb-note').hidden = loading || ready;
-  if (loading) $('tb-label').textContent = tidbit.label;
+  if (loading) $('tb-label').textContent = tidbit.factStatus === 'loading' || !story.label ? tidbit.label : story.label;
   if (!loading && !ready) {
-    $('tb-note').textContent = tidbit.status === 'failed' ? "Couldn't look this one up. Trying again soon." : 'No stories about this song yet.';
+    $('tb-note').textContent = tidbit.status === 'failed' ? "Couldn't look this one up. Trying again soon." : 'No story for this song yet.';
   }
   if (ready && !$('tb-head').textContent) showTidbit(0);
-  if (!ready) { $('tb-head').textContent = ''; $('tb-text').textContent = ''; $('tb-dots').textContent = ''; $('tb-flood').textContent = ''; }
+  else if (ready && $('tb-dots').children.length !== tidbit.items.length) drawDots();   // more cards arrived
+  if (!ready) { $('tb-head').textContent = ''; $('tb-text').textContent = ''; $('tb-kicker').textContent = ''; $('tb-orig').textContent = ''; $('tb-dots').textContent = ''; $('tb-flood').textContent = ''; }
   syncFlood();
+}
+
+function drawDots() {
+  $('tb-dots').textContent = '';
+  for (let i = 0; i < tidbit.items.length; i++) {
+    const dot = document.createElement('i'), bar = document.createElement('b');
+    if (i < tidbit.index) bar.style.transform = 'scaleX(1)';
+    dot.append(bar);
+    $('tb-dots').append(dot);
+  }
 }
 
 const lightness = ([r, g, b]) => {
@@ -2411,7 +2500,7 @@ function showTidbit(index) {
   const ground = funny ? voice : music.map(v => v * (second ? .62 : .2));
   tidbit.index = index;
   tidbit.shown = 0;
-  tidbit.dwell = Math.max(8, 5 + (item.headline + ' ' + item.text).split(/\s+/).length * .34);
+  tidbit.dwell = Math.max(8, 5 + [item.headline, item.orig, item.text].join(' ').split(/\s+/).length * .34);
   tidbit.light = lightness(ground) > .22;
   floodTo(ground);
   syncFlood();
@@ -2420,14 +2509,10 @@ function showTidbit(index) {
   head.classList.toggle('tilt', funny);
   head.style.color = !funny && !second && !tidbit.light ? cssColor(voice) : '';
   text.textContent = item.headline ? item.text : '';
-  $('tb-source').textContent = 'From Wikipedia: ' + item.source;
-  $('tb-dots').textContent = '';
-  for (let i = 0; i < tidbit.items.length; i++) {
-    const dot = document.createElement('i'), bar = document.createElement('b');
-    if (i < index) bar.style.transform = 'scaleX(1)';
-    dot.append(bar);
-    $('tb-dots').append(dot);
-  }
+  $('tb-kicker').textContent = item.kicker || '';
+  $('tb-orig').textContent = item.orig || '';
+  $('tb-source').textContent = item.credit || 'From Wikipedia: ' + item.source;
+  drawDots();
 
   head.style.fontSize = '';
   let size = parseFloat(getComputedStyle(head).fontSize);
@@ -2442,7 +2527,9 @@ function showTidbit(index) {
 
 function tickTidbits() {
   if (activeTab !== 'tidbits' || document.hidden) return;
-  if (tidbit.status === 'loading') {
+  if (tidbit.status === 'loading' && tidbit.factStatus !== 'loading' && story.total) {
+    $('tb-fill').style.transform = `scaleX(${story.done / story.total})`;   // lines of the song worked through
+  } else if (tidbit.status === 'loading') {
     // Real steps from the server, with an honest creep inside the current step.
     const creep = 1 - Math.exp(-(performance.now() - tidbit.stepAt) / (tidbit.step === tidbit.steps - 1 ? 7000 : 1400));
     $('tb-fill').style.transform = `scaleX(${(tidbit.step + creep * .92) / tidbit.steps})`;
@@ -2627,12 +2714,12 @@ async function loadLyrics(key, status) {
   } catch { view.status = null; }   // the next poll asks again
 }
 
-function showTrack(state) {
+function showTrack(state, sent) {
   const track = state.track;
   if (view.key !== track.key) {
     view.key = track.key;
     view.status = null;
-    view.offset = loadOffset(track.key);
+    view.offset = offsetSaves.has(track.key) ? offsetSaves.get(track.key) : track.offset || 0;
     $('title').textContent = track.name;
     $('artist').textContent = track.artist;
     clearLyrics();
@@ -2642,6 +2729,9 @@ function showTrack(state) {
     loadTidbits();
     wake();
     setTimeout(() => offerHint('controls', 'Double-tap for controls'), 7000);
+  } else {
+    const offset = offsetFromMac(track, sent);   // another phone may have nudged this song
+    if (offset !== view.offset) { view.offset = offset; showOffset(); tick(); }
   }
   const art = state.art || null;
   if (art !== view.art) {
@@ -2683,7 +2773,7 @@ function apply(state, sent) {
   const playing = state.state === 'playing';
   const trip = (performance.now() - sent) / 1000;
   syncClock(state.position + (playing ? state.age + trip / 2 : 0), playing);
-  showTrack(state);
+  showTrack(state, sent);
 
   pausedSince = playing ? null : (pausedSince ?? Date.now());
   if (vis.playing && !playing) wake();
@@ -2720,6 +2810,7 @@ async function poll() {
     const state = await res.json();
     reloadIfNewer(state.page);
     apply(state, sent);
+    saveOffset();   // retries a nudge the Mac didn't get
     failures = 0;
   } catch {
     failures++;
@@ -2786,7 +2877,8 @@ function toggleControls() {
 
 function changeOffset(delta) {
   view.offset = Math.round((view.offset + delta) * 100) / 100;
-  saveOffset(view.key, view.offset);
+  offsetSaves.set(view.key, view.offset);
+  saveOffset();
   showOffset();
   revealTiming();
   tick();
@@ -2852,6 +2944,7 @@ showClock();
 setInterval(showClock, 1000);
 setInterval(driftIdle, 60000);
 setInterval(tick, 100);
+moveOffsetsToMac();
 poll();
 </script>
 </body>

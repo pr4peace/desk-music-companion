@@ -20,3 +20,7 @@ xcuserdata/
 
 # Translation model environment, made by translate/setup.sh
 translate/.venv/
+
+# Lyric timing nudges, one per song, made on the phones
+timing.json
+timing.tmp
