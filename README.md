@@ -184,6 +184,13 @@ ollama pull qwen3.5:9b
 
 `WRITERS` in `server.py` lists which models it will use, best first.
 
+The small model keeps the Mac responsive but sometimes gets a line wrong. If your Mac has the memory for a bigger one, it writes better Natural translations and stories. Pull it, then run the installer again with its name:
+
+```bash
+ollama pull qwen3.5:27b
+DESK_MUSIC_WRITER=qwen3.5:27b ./install.sh
+```
+
 ## Working on it
 
 | Where | What's in it |
