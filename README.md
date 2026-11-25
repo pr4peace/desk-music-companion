@@ -73,7 +73,7 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
   </tr>
   <tr>
     <td><b>Controls.</b> Only what applies to the tab you're on.</td>
-    <td><b>Hints.</b> The first few times, a hint shows the gesture. It stops once you've used it.</td>
+    <td><b>Hints.</b> The first few times, a hint shows the gesture, or points at Natural in the controls. It stops once you've used it.</td>
     <td><b>More tidbits.</b> Each card takes the album's colours, light or dark.</td>
   </tr>
 </table>
@@ -99,6 +99,7 @@ Leave the phone on the desk with the app open and play music on the Mac. Everyth
   - **Every tab:** previous, play/pause, next.
   - **Lyrics:** **In English letters** turns the transliteration on or off. **English** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). **What it means** adds a short note under lines whose meaning needs more than a translation. The first time Natural and the notes run on a song they take 20 to 50 seconds each, with a filling ring under the lyric to show how far along they are; the literal English shows meanwhile. **− / +** moves the lyrics a quarter second earlier or later if they drift, and the label says where they are; tap it to put them back on time. It's saved on the Mac for that song, so every phone shows the same fix and it survives reinstalling the page.
   - **Visualizer:** playback, and the timing nudge for the sung line.
+  - **?** at the right of the playback buttons opens a one-screen guide to all of this. The first few times the controls open on a translated song, a hint points at **Natural**, until you've tried it.
 - **With VoiceOver,** double-tap belongs to VoiceOver, so swipe to the **Show controls** button just after the song title instead. With a keyboard, Tab gets you there and Escape closes the controls.
 - **Left alone,** after 8 seconds the tabs and progress bar fade and the title dims. Any touch, a new song or a pause brings them back.
 - **Visualizer styles:** swipe sideways to switch between **Rings**, **Kolam**, **Words**, **Diyas** and **Vinyl**. The glass pill at the top shows the one that's on with its neighbours either side, and slides along as you swipe; past the last style it comes back round to the first. You can tap the neighbours too. In Rings, touching the screen ripples and stirs the picture. In Kolam, it lights up the dots under your finger.

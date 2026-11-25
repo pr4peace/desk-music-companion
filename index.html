@@ -331,6 +331,36 @@
     transition: opacity .3s ease, translate .5s var(--ease);
   }
   #hint.on { opacity: 1; translate: -50% 0; }
+  /* A hint about a setting floats just above the open controls, over the panel it points into. */
+  #hint.over { z-index: 7; }
+
+  /* The "?" in the controls opens a one-screen guide to everything the page can do. */
+  #timing .transport { position: relative; }
+  #timing #help {
+    position: absolute; right: 0; top: 50%; translate: 0 -50%; width: 44px; height: 44px;
+    font-size: 19px; font-weight: 700; color: var(--muted); background: var(--well);
+  }
+  #guide {
+    margin: auto; width: min(440px, calc(100vw - 2 * var(--pad-x))); max-height: calc(100dvh - var(--pad-top) - var(--pad-bottom));
+    overflow: auto; padding: 0; border: 0; border-radius: 30px; color: var(--text);
+    background: var(--panel); -webkit-backdrop-filter: blur(34px) saturate(1.8); backdrop-filter: blur(34px) saturate(1.8);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), inset 0 -1px 0 rgba(0, 0, 0, .16), 0 22px 60px rgba(0, 0, 0, .5);
+    user-select: text; -webkit-user-select: text;
+  }
+  #guide .sheet { padding: 20px 22px 16px; }
+  #guide[open] { animation: guide-in .4s var(--ease); }
+  #guide::backdrop { background: rgba(0, 0, 0, .42); }
+  @keyframes guide-in { from { opacity: 0; transform: translateY(12px) scale(.97); } }
+  @media (prefers-reduced-motion: reduce) { #guide[open] { animation: none; } }
+  #guide h2 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 14px; }
+  #guide dl { display: grid; gap: 12px; }
+  #guide dt { font-size: 16px; font-weight: 650; line-height: 1.3; }
+  #guide dd { font-size: 15px; line-height: 1.35; color: var(--muted); }
+  #guide button {
+    display: block; width: 100%; height: 48px; margin-top: 18px; border: 0; border-radius: 99px; cursor: pointer;
+    font: inherit; font-size: 16px; font-weight: 650; color: var(--text); background: var(--drop);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 8px rgba(0, 0, 0, .22);
+  }
 
   /* The controls rise out of the footer, in the same glass as the tabs. */
   #timing {
@@ -415,6 +445,15 @@
     #timing { left: var(--pad-x); right: auto; bottom: calc(var(--pad-bottom) + 62px); width: min(380px, 46vw); gap: 10px; padding: 12px; border-radius: 28px; }
     #now.split #timing { left: auto; right: var(--pad-x); }
     #hint { bottom: calc(var(--pad-bottom) + 66px); }
+    #guide { width: min(820px, calc(100vw - 2 * var(--pad-x))); }
+    /* Sideways the guide runs in two columns, with Got it beside the title, so it fits without scrolling. */
+    #guide .sheet { display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 14px 22px 16px; }
+    #guide h2 { margin: 0; font-size: 19px; }
+    #guide form { grid-row: 1; grid-column: 2; }
+    #guide dl { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; column-gap: 26px; row-gap: 7px; margin-top: 8px; }
+    #guide dt { font-size: 15px; }
+    #guide dd { font-size: 14px; line-height: 1.3; }
+    #guide button { width: auto; margin: 0; height: 44px; padding: 0 22px; font-size: 15px; }
     #timing .transport { gap: 14px; }
     #timing .transport button { width: 52px; height: 52px; }
     #timing #play { width: 62px; height: 62px; }
@@ -492,6 +531,7 @@
         <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 5H10v14H6.5zM14 5h3.5v14H14z"/></svg>
       </button>
       <button id="next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5H18v14h-2.5zM4 5v14l10.5-7z"/></svg></button>
+      <button id="help" aria-label="What you can do" aria-haspopup="dialog">?</button>
     </div>
     <div class="settings">
       <div class="seg roman" role="radiogroup" aria-labelledby="roman-label">
@@ -531,6 +571,20 @@
 <div id="offline" hidden>Can't reach your Mac. Retrying.</div>
 <p id="hint" role="status" aria-live="polite"></p>
 
+<dialog id="guide" aria-labelledby="guide-title"><div class="sheet">
+  <h2 id="guide-title">What you can do</h2>
+  <dl>
+    <div><dt>Double-tap anywhere</dt><dd>Shows these controls. One tap hides them.</dd></div>
+    <div><dt>Lyrics, Visualizer, Story</dt><dd>Story tells you what the song is about.</dd></div>
+    <div><dt>Swipe sideways on the Visualizer</dt><dd>Changes the style.</dd></div>
+    <div><dt>In English letters</dt><dd>The words as sung, spelled in English letters.</dd></div>
+    <div><dt>English: Literal or Natural</dt><dd>Word for word, or the way you'd say it.</dd></div>
+    <div><dt>What it means</dt><dd>A short note on each line as it's sung.</dd></div>
+    <div><dt>− and +</dt><dd>Nudge lyrics that run early or late.</dd></div>
+  </dl>
+  <form method="dialog"><button>Got it</button></form>
+</div></dialog>
+
 
 <script>
 const $ = id => document.getElementById(id);
@@ -546,7 +600,7 @@ function wake() {
   ambientTimer = setTimeout(rest, AMBIENT_AFTER_MS);
 }
 function rest() {
-  const busy = !$('timing').classList.contains('off') || !vis.playing || document.querySelector('#hint.on');
+  const busy = !$('timing').classList.contains('off') || !vis.playing || document.querySelector('#hint.on') || $('guide').open;
   if (busy) { ambientTimer = setTimeout(rest, AMBIENT_AFTER_MS); return; }
   document.body.classList.add('ambient');
 }
@@ -563,19 +617,34 @@ const stageBox = () => stageRect || (stageRect = $('stage').getBoundingClientRec
 
 function store(action) { try { return action(localStorage); } catch { return null; } }
 
-// One-time hints for the two gestures nobody would guess. Each shows at most three times,
-// once per visit, and never again once the gesture has been used.
+// One-time hints for what nobody would guess: the double-tap, the styles swipe and Natural English.
+// Each shows at most three times, once per visit, and never again once the feature has been used.
+// A hint given an element floats just above it; that is how the Natural hint points into the open controls.
 const HINT_SHOWS = 3;
 let hintTimer = null;
 const hinted = new Set();
 const hintSeen = name => Number(store(s => s.getItem('hint:' + name))) || 0;
-function offerHint(name, text) {
-  if (hinted.has(name) || hintSeen(name) >= HINT_SHOWS || $('hint').classList.contains('on') || !$('timing').classList.contains('off')) return;
+function offerHint(name, text, over) {
+  if (hinted.has(name) || hintSeen(name) >= HINT_SHOWS || $('hint').classList.contains('on')) return;
+  if (!over && !$('timing').classList.contains('off')) return;
   hinted.add(name);
   store(s => s.setItem('hint:' + name, String(hintSeen(name) + 1)));
   const hint = $('hint');
   hint.dataset.name = name;
   hint.textContent = text;
+  hint.classList.toggle('over', !!over);
+  let left = '', bottom = '';
+  if (over) {
+    const { offsetLeft: x, offsetTop: y, offsetWidth: w, offsetHeight: h } = over;
+    if (y > 64) { left = x + w / 2; bottom = innerHeight - y + 10; }   // room above it
+    else {   // sideways there's no room above, so it sits in the wider space beside it
+      const room = innerWidth - x - w;
+      left = x > room ? x / 2 : x + w + room / 2;
+      bottom = innerHeight - y - h / 2 - 22;
+    }
+  }
+  hint.style.left = left === '' ? '' : left + 'px';
+  hint.style.bottom = bottom === '' ? '' : bottom + 'px';
   hint.classList.add('on');
   clearTimeout(hintTimer);
   hintTimer = setTimeout(hideHint, 6000);
@@ -2202,6 +2271,7 @@ const segDropAt = new WeakMap();
 
 // Off, word for word, or written for meaning. Turning English off keeps the Natural choice for next time.
 function setEnglish(mode) {
+  if (mode === 'natural') retireHint('natural');
   extras.english = mode !== 'off';
   if (mode !== 'off') extras.natural = mode === 'natural';
   store(s => { s.setItem('show:english', extras.english ? '1' : '0'); s.setItem('show:natural', extras.natural ? '1' : '0'); });
@@ -2239,6 +2309,7 @@ function toggleExtra(name) {
   }
   store(s => s.setItem('show:' + name, extras[name] ? '1' : '0'));
   if (name === 'natural' && extras.natural && view.key) loadNatural(view.key);
+  if (name === 'natural' && extras.natural) retireHint('natural');
   showExtras();
   applyExtras();
   revealTiming();
@@ -2843,6 +2914,7 @@ function showOffset() {
 // Closed controls are inert, so VoiceOver and the keyboard skip what can't be seen.
 function setControls(open) {
   if (open) wake();
+  else if ($('hint').classList.contains('over')) hideHint();
   $('timing').classList.toggle('off', !open);
   $('timing').inert = !open;
   $('open-controls').setAttribute('aria-expanded', open);
@@ -2869,10 +2941,28 @@ function toggleControls() {
     retireHint('controls');
     store(s => s.setItem('controls:opens', String(controlsOpens() + 1)));
     revealTiming();
+    offerNatural();
     return;
   }
   clearTimeout(timingTimer);
   setControls(false);
+}
+
+// Natural English is the setting most worth finding, so the first few times the controls open on a
+// translated song with Literal on, a hint points at it.
+function offerNatural() {
+  if (!extras.english || extras.natural || !Object.keys(view.english).length) return;
+  setTimeout(() => {
+    if (!$('timing').classList.contains('off') && !extras.natural) offerHint('natural', 'Try Natural for English that flows', $('timing'));
+  }, 700);
+}
+
+// The guide covers everything in one screen. The controls step aside while it's open.
+function openGuide() {
+  clearTimeout(timingTimer);
+  setControls(false);
+  hideHint();
+  $('guide').showModal();
 }
 
 function changeOffset(delta) {
@@ -2913,6 +3003,9 @@ $('offset').onclick = () => { if (view.offset) changeOffset(-view.offset); else 
 for (const button of document.querySelectorAll('#timing .english button')) button.onclick = () => setEnglish(button.dataset.english);
 buildPager();
 new ResizeObserver(() => placePager(false)).observe($('vis-pager'));
+$('help').onclick = openGuide;
+$('guide').addEventListener('close', () => $('open-controls').focus({ preventScroll: true }));
+$('guide').addEventListener('click', event => { if (event.target === $('guide')) $('guide').close(); });   // a tap outside the panel
 $('earlier').onclick = () => changeOffset(STEP);
 $('later').onclick = () => changeOffset(-STEP);
 $('open-controls').onclick = () => {
@@ -2936,6 +3029,7 @@ $('now').addEventListener('pointerup', pointerEnd);
 $('now').addEventListener('pointercancel', pointerEnd);
 addEventListener('resize', () => { stageRect = null; placeActive(true); });
 
+if (extras.natural) retireHint('natural');
 showOffset();
 showExtras();
 showVisStyle(false);
