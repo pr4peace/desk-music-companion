@@ -211,3 +211,93 @@ class SafariTabs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+NETEASE_LRC = """[00:00.00] 作词 : Mashook Rahman
+[00:00.50] 作曲 : A.R. Rahman
+[00:01.00] Lyricist: Someone
+[00:12.10]O kadhale
+[00:16.40]En uyire
+[00:20.00]
+[00:21.30]Nee varuvaai
+[00:25.80]Ennai thedi
+"""
+
+
+def netease_song(song_id, name, artists, seconds):
+    return {"id": song_id, "name": name, "artists": [{"name": a} for a in artists],
+            "album": {"name": name}, "duration": seconds * 1000}
+
+
+class NetEase(unittest.TestCase):
+    def test_credit_lines_are_dropped(self):
+        lines = server.parse_lrc(server.clean_netease_lrc(NETEASE_LRC))
+        self.assertEqual([l["text"] for l in lines if l["text"]], ["O kadhale", "En uyire", "Nee varuvaai", "Ennai thedi"])
+
+    def test_sung_line_with_a_colon_is_kept(self):
+        text = "[00:10.00]Baby: come home\n[00:12.00]b\n[00:14.00]c\n[00:16.00]d"
+        self.assertIn("Baby: come home", server.clean_netease_lrc(text))
+
+    def test_untimed_or_empty_lyrics_are_rejected(self):
+        self.assertIsNone(server.clean_netease_lrc(""))
+        self.assertIsNone(server.clean_netease_lrc(None))
+        self.assertIsNone(server.clean_netease_lrc("[00:00.00]a\n[00:00.00]b\n[00:00.00]c\n[00:00.00]d"))
+        self.assertIsNone(server.clean_netease_lrc("[99:00.00]纯音乐，请欣赏"))
+
+    def test_search_result_becomes_lrclib_shaped(self):
+        item = server.netease_record(netease_song(7, "O Kadhale", ["A.R. Rahman", "Adithya RK"], 350.1))
+        self.assertEqual(item["artistName"], "A.R. Rahman, Adithya RK")
+        self.assertAlmostEqual(item["duration"], 350.1)
+
+    def fake_netease(self, songs, lyrics):
+        def call(path, params):
+            if path == "search/get":
+                return {"result": {"songs": songs}}
+            return {"lrc": {"lyric": lyrics.get(params["id"], "")}}
+        return call
+
+    def test_finds_timed_lyrics_for_the_same_song(self):
+        songs = [netease_song(1, "O Kadhale", ["Someone Else"], 350),
+                 netease_song(2, "O Kadhale", ["A.R. Rahman"], 350)]
+        playing = track("O Kadhale", "A.R. Rahman", 350)
+        with mock.patch.object(server, "netease", self.fake_netease(songs, {1: NETEASE_LRC, 2: NETEASE_LRC})):
+            found = server.lookup_netease(playing)
+        self.assertEqual(found["id"], 2)
+        self.assertIn("O kadhale", found["syncedLyrics"])
+
+    def test_skips_a_match_with_no_timing(self):
+        songs = [netease_song(2, "O Kadhale", ["A.R. Rahman"], 350)]
+        with mock.patch.object(server, "netease", self.fake_netease(songs, {2: ""})):
+            self.assertIsNone(server.lookup_netease(track("O Kadhale", "A.R. Rahman", 350)))
+
+    def test_rejects_other_language_version(self):
+        songs = [netease_song(2, "O Kadhale", ["A.R. Rahman"], 350)]
+        hindi = "\n".join(f"[00:{10 + i}.00]{w}" for i, w in enumerate(
+            ["Tere ishq mein jalna", "Mera dil hai pagal", "Bechain rehta hoon", "Har pal tujhe dekhoon", "Saaton janam tak"]))
+        reference = record("O Kadhale", "A.R. Rahman", 350, plain="O kadhale en uyire\nNee varuvaai ennai thedi\nKanmani nilave maalai\nPon vaanam nenjil kolam\nThendral veesum kaatrile")
+        with mock.patch.object(server, "netease", self.fake_netease(songs, {2: hindi})):
+            self.assertIsNone(server.lookup_netease(track("O Kadhale", "A.R. Rahman", 350), reference=reference))
+
+
+class LookupOrder(unittest.TestCase):
+    def test_synced_lrclib_skips_netease(self):
+        synced = record("Hey Jude", "The Beatles", 431, synced="[00:01.00]Hey Jude")
+        with mock.patch.object(server, "lookup_lrclib", return_value=synced), \
+             mock.patch.object(server, "lookup_netease") as second:
+            self.assertIs(server.lookup_lyrics(track("Hey Jude", "The Beatles", 431)), synced)
+        second.assert_not_called()
+
+    def test_plain_lrclib_is_upgraded_by_netease(self):
+        plain = record("O Kadhale", "A.R. Rahman", 350, plain="O kadhale")
+        timed = record("O Kadhale", "A.R. Rahman", 350, synced=NETEASE_LRC)
+        with mock.patch.object(server, "lookup_lrclib", return_value=plain), \
+             mock.patch.object(server, "lookup_netease", return_value=timed) as second:
+            self.assertIs(server.lookup_lyrics(track("O Kadhale", "A.R. Rahman", 350)), timed)
+        self.assertIs(second.call_args.kwargs["reference"], plain)
+
+    def test_netease_failure_keeps_plain_lyrics(self):
+        plain = record("O Kadhale", "A.R. Rahman", 350, plain="O kadhale")
+        with mock.patch.object(server, "lookup_lrclib", return_value=plain), \
+             mock.patch.object(server, "lookup_netease", side_effect=OSError("offline")), \
+             mock.patch("builtins.print"):
+            self.assertIs(server.lookup_lyrics(track("O Kadhale", "A.R. Rahman", 350)), plain)

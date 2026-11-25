@@ -5,7 +5,7 @@ Follows whatever macOS reports as Now Playing (Apple Music, Spotify, and so on)
 through the `media-control` tool. Safari does not always report to Now Playing,
 so while Safari is making sound the server also reads any open YouTube tab,
 which needs Safari > Settings > Developer > Allow JavaScript from Apple Events
-for lyrics timing. Finds lyrics on LRCLIB and serves a full-screen page over the
+for lyrics timing. Finds lyrics on LRCLIB (or NetEase, for timing LRCLIB lacks) and serves a full-screen page over the
 local network. It only touches playback when a control on the phone is pressed.
 
 Needs:  brew install media-control
@@ -556,7 +556,90 @@ def lookup_lrclib(track):
     return min(usable, key=lambda i: rank(i, track)) if usable else None
 
 
-LOOKUP_VERSION = 2   # songs saved by an earlier version of the matching rules are looked up again
+NETEASE = "https://music.163.com/api"
+# NetEase puts the credits (lyricist, composer...) at the top as timed lines. They are not sung.
+CREDIT_LINE = re.compile(r"^[^:：]{1,24}[:：]")
+CREDIT_WORDS = re.compile(r"[\u4e00-\u9fff]|lyric|compos|produc|arrang|written|music|vocal|singer|mix|master|record", re.I)
+
+
+def netease(path, params):
+    url = f"{NETEASE}/{path}?{urllib.parse.urlencode(params)}"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Referer": "https://music.163.com/"})
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as err:
+        if err.code in (400, 404):
+            return None
+        raise
+
+
+def clean_netease_lrc(text):
+    """Drops the credit lines NetEase adds, and the placeholder for songs nobody has timed."""
+    kept = []
+    for raw in (text or "").splitlines():
+        words = re.sub(r"\[[^\]]*\]", "", raw).strip()
+        match = CREDIT_LINE.match(words)
+        if match and CREDIT_WORDS.search(match[0]):
+            continue
+        kept.append(raw)
+    synced = "\n".join(kept)
+    lines = [line for line in parse_lrc(synced) if line["text"]]
+    if len(lines) < 4 or all(line["t"] == lines[0]["t"] for line in lines):
+        return None   # untimed or nearly empty: no better than plain lyrics
+    return synced
+
+
+def netease_record(song):
+    """A NetEase search result in the shape of an LRCLIB record, so the same checks apply."""
+    return {
+        "id": song.get("id"),
+        "trackName": song.get("name"),
+        "artistName": ", ".join(a.get("name") or "" for a in song.get("artists") or []),
+        "albumName": (song.get("album") or {}).get("name"),
+        "duration": (song.get("duration") or 0) / 1000,
+        "syncedLyrics": None,
+        "plainLyrics": None,
+    }
+
+
+def lookup_netease(track, reference=None):
+    """Returns a NetEase record with synced lyrics, or None. Raises on network failure."""
+    titles, names = search_terms(track)
+    tried = set()
+    for title in titles[:2]:
+        for query in ([f"{title} {names[0]}"] if names else []) + [title]:
+            found = netease("search/get", {"s": query, "type": 1, "limit": 10}) or {}
+            songs = (found.get("result") or {}).get("songs") or []
+            candidates = [netease_record(s) for s in songs]
+            candidates = [c for c in candidates if c["id"] not in tried and matches(c, track, titles, names)]
+            candidates.sort(key=lambda c: abs(c["duration"] - track["duration"]))
+            for candidate in candidates[:3]:
+                tried.add(candidate["id"])
+                lyric = netease("song/lyric", {"id": candidate["id"], "lv": 1}) or {}
+                candidate["syncedLyrics"] = clean_netease_lrc((lyric.get("lrc") or {}).get("lyric"))
+                if not candidate["syncedLyrics"] or not timing_fits(candidate, track):
+                    continue
+                if reference and not same_lyrics(candidate, reference):
+                    continue   # same title, other language
+                return candidate
+    return None
+
+
+def lookup_lyrics(track):
+    """LRCLIB first. When it has no timing, NetEase may. Raises only if LRCLIB can't be reached."""
+    record = lookup_lrclib(track)
+    if record and (record.get("syncedLyrics") or record.get("instrumental")):
+        return record
+    try:
+        timed = lookup_netease(track, reference=record)
+    except Exception as err:  # the second source is a bonus; plain lyrics still show
+        print(f"NetEase lookup failed for {track['name']}: {err}", flush=True)
+        timed = None
+    return timed or record
+
+
+LOOKUP_VERSION = 3   # songs saved by an earlier version of the matching rules are looked up again
 
 
 class LyricsStore:
@@ -590,7 +673,7 @@ class LyricsStore:
 
     def _fetch(self, key, track):
         try:
-            record = lookup_lrclib(track)
+            record = lookup_lyrics(track)
         except Exception as err:  # network trouble: keep the screen alive, try again soon
             print(f"lyrics lookup failed for {track['name']}: {err}", flush=True)
             self._set(key, {"status": "error", "retry_at": time.time() + self.ERROR_RETRY})

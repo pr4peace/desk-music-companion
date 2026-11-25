@@ -115,7 +115,7 @@ You need both devices, and they do different jobs.
 Mac                                                        iPhone on the desk
 ├─ knows what's playing   (media-control, Safari tabs)     └─ full-screen app that
 ├─ hears the sound        (visualizer/audio_levels)           shows the page and
-├─ finds the lyrics       (LRCLIB)                            keeps the screen on
+├─ finds the lyrics       (LRCLIB, NetEase)                   keeps the screen on
 ├─ translates, researches (Google, Wikipedia, Ollama)
 └─ serves it all on port 8787  ───── your Wi-Fi ─────►
 ```
@@ -241,6 +241,7 @@ Please work on a branch and open a pull request.
 | Service | What it receives | Why |
 |---|---|---|
 | [LRCLIB](https://lrclib.net) | Song title, artist, album, length | Lyrics |
+| [NetEase Cloud Music](https://music.163.com) (unofficial endpoints) | Song title and artist | Timed lyrics, only when LRCLIB has just plain text or nothing |
 | Google Translate and Input Tools (unofficial endpoints) | Lines of the lyrics | Translation, unless the on-Mac translators are installed and the song is in an Indian script |
 | Wikipedia | Song, album and artist names | Tidbits |
 | YouTube's image server | Video ID | Thumbnails |
