@@ -212,3 +212,15 @@ def to_latin(text):
     for handle in (source, mutable, transform):
         cf.CFRelease(handle)
     return output.value.decode("utf-8") if found else text
+
+
+# --- Secrets -------------------------------------------------------------------
+
+def read_secret(service, account):
+    """A password saved in the login Keychain, or None. tools/claude-key.sh saves the Claude key here."""
+    try:
+        found = subprocess.run(["/usr/bin/security", "find-generic-password", "-s", service, "-a", account, "-w"],
+                               capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return found.stdout.strip() or None if found.returncode == 0 else None

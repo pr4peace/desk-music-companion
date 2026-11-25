@@ -1680,7 +1680,7 @@ class WrittenStore:
             if not entry and saved.exists():
                 entry = json.loads(saved.read_text("utf-8"))
                 if entry.get("version") == WRITING_VERSION or self.name != "natural":
-                    if "weak" not in entry and built_before_upgrade(saved, key):
+                    if "weak" not in entry and (built_before_upgrade(saved, key) or upgrade_to_claude(entry)):
                         entry["weak"] = True
                     self.entries[key] = entry
                 else:
@@ -1728,14 +1728,16 @@ class WrittenStore:
         with self.lock:
             previous = self.entries.get(key)
         rewriting = previous is not None and previous.get("rewriting")
-        model = choose_writer()
+        model = choose_song_writer()
         if not model:
             entry = {"status": "unavailable", "retry_at": time.time() + self.UNAVAILABLE_RETRY}
         else:
             try:
+                written_by.name = None
                 with tidbits.writing:   # one job at a time on the local model
                     written = self.writer(model, lines, literal, track, lambda done: self._progress(key, done))
-                entry = {"status": "ready" if written else "none", "lines": written, "version": WRITING_VERSION}
+                entry = {"status": "ready" if written else "none", "lines": written, "version": WRITING_VERSION,
+                         "writer": getattr(written_by, "name", None) or "local"}
                 if weak:
                     entry["weak"] = True
                 CACHE.mkdir(exist_ok=True)
@@ -1776,7 +1778,7 @@ def natural_lines(model, lines, literal, track, progress=None):
         "a lyric. Keep names and words with no good English equivalent. One entry for every line, in order.\n"
         'Reply with only JSON: {"lines": [{"n": 1, "en": "..."}]}'
     )
-    reply = ollama_chat(model, "You translate song lyrics so they make sense to an English speaker. You never add lines or invent meaning that isn't there.", prompt, 3000,
+    reply = write_with(model, "You translate song lyrics so they make sense to an English speaker. You never add lines or invent meaning that isn't there.", prompt, 3000,
                         on_text=progress and (lambda text: progress(lines_written(text))), temperature=0.2)
     rows = numbered_lines(reply, len(lines))
     result = {}
@@ -1811,7 +1813,7 @@ def context_notes(model, lines, literal, track, progress=None):
         "are plain or already clear. A repeated line gets a note only the first time. Never invent facts about the singers or the film.\n"
         'Reply with only JSON: {"lines": [{"n": 3, "note": "..."}]}'
     )
-    reply = ollama_chat(model, "You explain song lyrics to an English speaker the way a friend who grew up with the language would.", prompt, 2500,
+    reply = write_with(model, "You explain song lyrics to an English speaker the way a friend who grew up with the language would.", prompt, 2500,
                         on_text=progress and (lambda text: progress(lines_written(text))))
     rows = numbered_lines(reply, len(lines), field="note")
     result = {}
@@ -1847,7 +1849,7 @@ def song_story(model, lines, english, track):
         "Use only what is in the lyrics. Never invent facts about the singers, the film or the story around it.\n"
         'Reply with only JSON: {"about": "...", "key": 3, "meaning": "..."}'
     )
-    reply = ollama_chat(model, "You explain songs to an English speaker the way a friend who grew up with the language would.", prompt, 700)
+    reply = write_with(model, "You explain songs to an English speaker the way a friend who grew up with the language would.", prompt, 700)
     start, end = reply.find("{"), reply.rfind("}")
     try:
         found = json.loads(reply[start:end + 1])
@@ -1887,7 +1889,7 @@ class StoryStore:
             if not entry and saved.exists():
                 entry = json.loads(saved.read_text("utf-8"))
                 if entry.get("version") == WRITING_VERSION:
-                    if "weak" not in entry and built_before_upgrade(saved, key):
+                    if "weak" not in entry and (built_before_upgrade(saved, key) or upgrade_to_claude(entry)):
                         entry["weak"] = True
                     self.entries[key] = entry
                 else:
@@ -1931,16 +1933,18 @@ class StoryStore:
         with self.lock:
             previous = self.entries.get(key)
         rewriting = previous is not None and previous.get("rewriting")
-        model = choose_writer()
+        model = choose_song_writer()
         if not model:
             entry = {"status": "unavailable", "retry_at": time.time() + self.UNAVAILABLE_RETRY}
         else:
             try:
+                written_by.name = None
                 with tidbits.writing:   # one job at a time on the local model
                     story = song_story(model, lines, english, track)
                 if not story:
                     raise ValueError("the reply had no usable story")
-                entry = {"status": "ready", **story, "version": WRITING_VERSION}
+                entry = {"status": "ready", **story, "version": WRITING_VERSION,
+                         "writer": getattr(written_by, "name", None) or "local"}
                 if weak:
                     entry["weak"] = True
                 CACHE.mkdir(exist_ok=True)
@@ -1978,6 +1982,128 @@ def ollama_chat(model, system, prompt, max_tokens, on_text=None, temperature=0.4
             if part.get("done"):
                 break
         return text
+
+
+# --- Claude, when you've given it a key ------------------------------------------
+# With an Anthropic API key, Claude writes the Natural translation, the notes on what lines mean and
+# the Story, which it does far better than a small local model for Tamil and Hindi. The lyrics are
+# sent to Anthropic to do it. Without a key, or when Claude can't be reached, the local model writes
+# as before. Tidbits and the stand-in word-for-word translation always stay on this Mac.
+# The project uses no packages outside Python's own, so this talks to the API over plain HTTPS.
+
+CLAUDE_API = "https://api.anthropic.com/v1/messages"
+CLAUDE_API_VERSION = "2026-10-21"
+CLAUDE_MODEL = os.environ.get("DESK_MUSIC_CLAUDE_MODEL", "").strip() or "claude-haiku-5-5"
+CLAUDE_ON = os.environ.get("DESK_MUSIC_CLAUDE", "").strip().lower() != "off"
+CLAUDE = "claude:"   # a writer named like this is Claude, not a local model
+CLAUDE_MAX_TOKENS = 16000   # room for its thinking as well as the reply
+KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT = "Desk Music Companion", "anthropic-api-key"
+KEY_RECHECK = 300   # seconds; so a key added or removed with tools/claude-key.sh is noticed without a restart
+
+
+class ClaudeAccess:
+    """Where the key comes from, and when Claude should be left alone after it failed."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.key, self.checked = None, 0.0
+        self.rest_until = 0.0
+
+    def current_key(self):
+        if not CLAUDE_ON:
+            return None
+        with self.lock:
+            if time.time() - self.checked > KEY_RECHECK:
+                self.key = os.environ.get("DESK_MUSIC_CLAUDE_KEY", "").strip() or system.read_secret(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+                self.checked = time.time()
+            return self.key
+
+    def ready(self):
+        return bool(self.current_key()) and time.time() >= self.rest_until
+
+    def failed(self, err):
+        """A refused key rests Claude for an hour; anything else, such as no network or a busy API, for a few minutes."""
+        status = getattr(err, "code", None)
+        rest = 3600 if status in (401, 403) else 60 if status == 429 else 300
+        with self.lock:
+            self.rest_until = time.time() + rest
+            if status in (401, 403):
+                self.checked = 0.0   # look for a new key once the rest is over
+
+
+claude = ClaudeAccess()
+written_by = threading.local()   # which writer the last piece of writing on this thread came from
+
+
+def claude_chat(model, system, prompt, on_text=None):
+    """Asks Claude. With on_text, the reply is streamed and on_text sees it grow."""
+    key = claude.current_key()
+    if not key:
+        raise RuntimeError("no Claude key")
+    body = {"model": model, "max_tokens": CLAUDE_MAX_TOKENS, "system": system,
+            "messages": [{"role": "user", "content": prompt}]}
+    if on_text:
+        body["stream"] = True
+    request = urllib.request.Request(CLAUDE_API, data=json.dumps(body).encode("utf-8"), headers={
+        "content-type": "application/json", "x-api-key": key, "anthropic-version": CLAUDE_API_VERSION})
+    with urllib.request.urlopen(request, timeout=240) as response:
+        if not on_text:
+            reply = json.load(response)
+            stop = reply.get("stop_reason")
+            text = "".join(block.get("text", "") for block in reply.get("content", []) if block.get("type") == "text")
+        else:
+            text, stop = "", None
+            for raw in response:
+                line = raw.decode("utf-8").strip()
+                if not line.startswith("data:"):
+                    continue
+                event = json.loads(line[5:])
+                kind = event.get("type")
+                if kind == "content_block_delta" and event["delta"].get("type") == "text_delta":
+                    text += event["delta"]["text"]
+                    on_text(text)
+                elif kind == "message_delta":
+                    stop = event.get("delta", {}).get("stop_reason") or stop
+                elif kind == "error":
+                    raise RuntimeError(f"Claude stopped: {event.get('error', {}).get('message', 'unknown error')}")
+                elif kind == "message_stop":
+                    break
+    if stop == "refusal":
+        raise RuntimeError("Claude declined to write this one")
+    if stop == "max_tokens":
+        raise RuntimeError("Claude's reply was cut off")
+    return text
+
+
+def write_with(model, system, prompt, max_tokens, on_text=None, temperature=0.4):
+    """Asks the writer choose_song_writer picked. If that is Claude and it fails, the local model
+    writes instead, so a dropped network or a spent key never leaves a song without writing."""
+    if model.startswith(CLAUDE):
+        try:
+            text = claude_chat(model[len(CLAUDE):], system, prompt, on_text)
+            written_by.name = "claude"
+            return text
+        except Exception as err:
+            print(f"Claude didn't write it ({err}); trying the model on this Mac", flush=True)
+            claude.failed(err)
+            model = choose_writer()
+            if not model:
+                raise
+    written_by.name = "local"
+    return ollama_chat(model, system, prompt, max_tokens, on_text, temperature)
+
+
+def choose_song_writer():
+    """Who writes the Natural translation, the notes and the Story: Claude when it has a key, else the local model."""
+    if claude.ready():
+        return CLAUDE + CLAUDE_MODEL
+    return choose_writer()
+
+
+def upgrade_to_claude(entry):
+    """True for saved writing from the local model now that Claude can write it, so it is written again.
+    The local version keeps showing until Claude's is ready."""
+    return entry.get("status") == "ready" and entry.get("writer") != "claude" and claude.ready()
 
 
 # --- Tidbits -----------------------------------------------------------------

@@ -45,3 +45,8 @@ except ImportError:
 def to_latin(text):
     """Latin letters through PyICU, the same ICU transform macOS uses. Unchanged without it."""
     return ANY_LATIN.transliterate(text) if ANY_LATIN else text
+
+
+def read_secret(service, account):
+    """No Keychain here: secrets come from environment variables instead."""
+    return None
