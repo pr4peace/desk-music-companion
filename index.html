@@ -26,7 +26,7 @@
     --line-past: rgba(246, 244, 239, .22);   /* lines already sung stay quiet on purpose */
     --hair: rgba(246, 244, 239, .16);
     --pad-x: max(24px, env(safe-area-inset-left), env(safe-area-inset-right));
-    --pad-top: max(22px, env(safe-area-inset-top));
+    --pad-top: max(22px, calc(env(safe-area-inset-top) + 14px));   /* breathing room below the notch or Dynamic Island */
     --pad-bottom: max(18px, env(safe-area-inset-bottom));
     --lyric-size: clamp(30px, 8.8vw, 68px);
     --ease: cubic-bezier(.22, 1, .36, 1);
@@ -143,8 +143,7 @@
   body.vis-on.paper-on #vis { display: none; }
   body.vis-on.paper-on #backdrop { visibility: hidden; }
   /* Below the pattern, at the lower right, like the caption under a drawing. */
-  #stage.vis.lower #vis-lyric { top: 63%; place-items: end end; padding-bottom: 54px; }   /* clear of the hint above the tabs */
-  #stage.vis.lower #vis-line { text-align: right; }
+  #stage.vis.lower #vis-lyric { top: 63%; place-items: center; padding-bottom: 54px; }   /* clear of the hint above the tabs */
   #stage.words #vis-line { visibility: hidden; }   /* it still tracks the sung word, unseen */
   /* Which visual is showing, and that a sideways swipe changes it: the same glass and drop as the tabs. */
   #vis-pager {
@@ -446,6 +445,18 @@
     #title { font-size: 17px; }
     #artist { font-size: 14px; }
     #stage { grid-row: 1; grid-column: 2; }
+    /* The visualizer gets the whole width sideways: the song shrinks to a small row over its top left,
+       so the picture can sit centred in its half instead of squeezed beside a big cover. */
+    #now[data-tab="vis"]:not(.split) { grid-template-columns: minmax(0, 1fr); }
+    #now[data-tab="vis"]:not(.split) #stage { grid-column: 1; }
+    #now[data-tab="vis"]:not(.split) #meta {
+      grid-column: 1; align-self: start; justify-self: start; position: relative; z-index: 1;
+      flex-direction: row; align-items: center; gap: 10px; max-width: 34%;
+    }
+    #now[data-tab="vis"]:not(.split) #art { width: 40px; height: 40px; aspect-ratio: auto; border-radius: 7px; }
+    #now[data-tab="vis"]:not(.split) #song { width: auto; }
+    #now[data-tab="vis"]:not(.split) #title { font-size: 15px; }
+    #now[data-tab="vis"]:not(.split) #artist { font-size: 13px; }
     #foot { grid-row: 2; grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 16px; }
     #time { flex: 1; min-width: 0; }
     #tabs button { flex: none; height: 44px; }
@@ -473,7 +484,6 @@
     #timing .transport button { width: 46px; height: 46px; }
     #tb-head { font-size: clamp(34px, 6.2vw, 56px); }
     #stage.vis.lower #vis-lyric, #stage.vis.words #vis-lyric { top: 44px; left: 52%; place-items: center; padding-bottom: 0; }
-    #stage.vis.lower #vis-line { text-align: center; }
     /* Sideways the controls stand over the side column, never across the line being sung. */
     #timing { left: var(--pad-x); right: auto; bottom: calc(var(--pad-bottom) + 62px); width: min(380px, 46vw); gap: 10px; padding: 12px; border-radius: 28px; }
     #now.split #timing { left: auto; right: var(--pad-x); }
@@ -1649,10 +1659,7 @@ function drawKolam(dt) {
   c.fillStyle = ground;
   c.fillRect(0, 0, W, H);
 
-  const stage = stageBox(), portrait = innerHeight >= innerWidth;
-  const side = (portrait ? Math.min(stage.width * .94, stage.height * .63 - 52) : Math.min(stage.height - 52, stage.width * .48)) * scale;
-  const left = portrait ? (stage.left + stage.width / 2) * scale - side / 2 : stage.left * scale;
-  const top = portrait ? (stage.top + 46) * scale : (stage.top + 46 + (stage.height - 46) / 2) * scale - side / 2;
+  const { left, top, side } = patternBox(scale);
   const now = performance.now() / 1000, middleX = left + side / 2, middleY = top + side / 2;
   if (!calm && vis.kick > .55 && now - kolam.lastBeat > .28) { kolam.lastBeat = now; kolam.waves.push(now); }
   kolam.waves = kolam.waves.filter(born => now - born < 1.6);
@@ -1912,13 +1919,20 @@ function paperCanvas() {
   return { c, W, H, scale };
 }
 
-// The square the picture sits in: above the lyric upright, beside it sideways (as for Kolam).
+// The square the picture sits in, centred in the room it has: above the lyric upright (the lyric
+// takes the stage below 63%), and in the left half sideways with the lyric in the right half.
+// The top 46px are the style pager's.
 function patternBox(scale) {
   const stage = stageBox(), portrait = innerHeight >= innerWidth;
-  const side = (portrait ? Math.min(stage.width * .94, stage.height * .63 - 52) : Math.min(stage.height - 52, stage.width * .48)) * scale;
-  const left = portrait ? (stage.left + stage.width / 2) * scale - side / 2 : stage.left * scale;
-  const top = portrait ? (stage.top + 46) * scale : (stage.top + 46 + (stage.height - 46) / 2) * scale - side / 2;
-  return { left, top, side };
+  const room = portrait
+    ? { x: stage.left, y: stage.top + 46, w: stage.width, h: stage.height * .63 - 46 }
+    : { x: stage.left, y: stage.top + 46, w: stage.width * .52, h: stage.height - 52 };
+  const side = Math.max(0, Math.min(room.w * .94, room.h));
+  return {
+    left: (room.x + (room.w - side) / 2) * scale,
+    top: (room.y + (room.h - side) / 2) * scale,
+    side: side * scale,
+  };
 }
 
 const rgba = (colour, alpha) => `rgb(${colour.map(v => Math.round(v * 255)).join(' ')} / ${alpha})`;

@@ -31,6 +31,8 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import updater
+
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / "cache"
 PORT = int(os.environ.get("PORT", "8787"))
@@ -2158,6 +2160,22 @@ timing = TimingStore(TIMING)
 tapped = TappedStore(TAPPED)
 
 
+def restart_server():
+    """Starts this server again in the same process, so it picks up new code at once."""
+    print("Restarting on the new version", flush=True)
+    now_playing.stop()
+    audio_levels.stop()
+    os.execv(sys.executable, [sys.executable, str(ROOT / "server.py"), *sys.argv[1:]])
+
+
+# Pulls new versions of main from GitHub and restarts on them. updates.json keeps the on/off
+# switch; installed-version is the commit install.sh last ran on, to tell when it must run again.
+updates = updater.Updater(
+    ROOT, ROOT / "updates.json", ROOT / "installed-version", restart=restart_server,
+    busy=lambda: current_player()["state"] == "playing",
+)
+
+
 def current_player():
     """A playing app wins, then a playing Safari tab, then whatever is paused."""
     system = now_playing.snapshot()
@@ -2315,6 +2333,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False}, 400)
             else:
                 self.send_json({"ok": True})
+        elif url.path == "/api/updates":
+            auto = query.get("auto", [""])[0]
+            if auto in ("0", "1"):
+                updates.set_auto(auto == "1")
+            if query.get("check", [""])[0] == "1":
+                updates.check_now()
+            self.send_json(updates.status())
         elif url.path == "/api/timing/import":
             # Phones from before nudges lived on the Mac hand over what they remembered, once.
             body = self.read_json()
@@ -2335,6 +2360,8 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/api/state":
             # Which page the Mac is serving, so a phone left open for days can tell it should reload.
             self.send_json({**build_state(), "page": str((ROOT / "index.html").stat().st_mtime_ns)})
+        elif url.path == "/api/updates":
+            self.send_json(updates.status())
         elif url.path == "/api/lyrics":
             entry = lyrics_store.get(query.get("key", [""])[0])
             if entry:
@@ -2415,6 +2442,7 @@ def main():
     atexit.register(audio_levels.stop)
     now_playing.start()
     safari_youtube.start()
+    updates.start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
     print(f"Desk Music Companion is running. Open on your phone: http://{lan_address()}:{PORT}", flush=True)
