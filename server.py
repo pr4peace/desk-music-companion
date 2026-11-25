@@ -682,7 +682,7 @@ class LyricsStore:
         if record and record.get("syncedLyrics"):
             entry = {"status": "synced", "lines": parse_lrc(record["syncedLyrics"])}
         elif record and record.get("plainLyrics"):
-            entry = {"status": "plain", "text": record["plainLyrics"]}
+            entry = with_tapped_timing(key, {"status": "plain", "text": record["plainLyrics"]})
         elif record and record.get("instrumental"):
             entry = {"status": "instrumental"}
         else:
@@ -780,6 +780,107 @@ class TimingStore:
             temporary.replace(self.path)   # a crash mid-write never leaves half a file
         except OSError as err:   # still right for this run; it just won't outlast a restart
             print(f"couldn't save lyric timing: {err}", flush=True)
+
+
+# --- Timing tapped on a phone -------------------------------------------------
+
+# When no lyrics site has timing for a song, someone can tap along on the phone once, line by
+# line. Kept beside server.py like the nudges, since they are someone's work, not a download.
+TAPPED = ROOT / "tapped"
+LONGEST_SONG = 4 * 3600
+
+
+def plain_rows(text):
+    return [row.strip() for row in (text or "").split("\n") if row.strip()]
+
+
+def tapped_lines(text, lines):
+    """Checks a phone's taps against the plain lyrics: one time per line, in order, never going
+    back. Returns the timed lines, or None if they don't fit these lyrics."""
+    rows = plain_rows(text)
+    if not rows or not isinstance(lines, list) or len(lines) != len(rows):
+        return None
+    timed, last = [], 0.0
+    for row, line in zip(rows, lines):
+        if not isinstance(line, dict) or line.get("text") != row:
+            return None
+        t = seconds_value(line.get("t"))
+        if t is None or t < last or t > LONGEST_SONG:
+            return None
+        timed.append({"t": t, "text": row})
+        last = t
+    return timed
+
+
+def seconds_value(value):
+    """A time in seconds, rounded to hundredths, or None if it isn't a finite number."""
+    if isinstance(value, bool):
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):
+        return None
+    return round(max(0.0, value), 2)
+
+
+class TappedStore:
+    def __init__(self, folder):
+        self.folder = folder
+        self.lock = threading.Lock()
+
+    def get(self, key):
+        try:
+            lines = json.loads((self.folder / f"{key}.json").read_text("utf-8"))
+        except (OSError, ValueError):
+            return None
+        return lines if isinstance(lines, list) else None
+
+    def set(self, key, lines):
+        with self.lock:
+            path = self.folder / f"{key}.json"
+            try:
+                if lines:
+                    self.folder.mkdir(exist_ok=True)
+                    temporary = path.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(lines, ensure_ascii=False), "utf-8")
+                    temporary.replace(path)
+                else:
+                    path.unlink(missing_ok=True)
+            except OSError as err:
+                print(f"couldn't save tapped timing: {err}", flush=True)
+
+
+def with_tapped_timing(key, entry):
+    """Plain lyrics become synced when someone has tapped along to them before."""
+    lines = tapped_lines(entry.get("text"), tapped.get(key))
+    if not lines:
+        return entry
+    return {"status": "synced", "lines": lines, "tapped": True, "text": entry["text"]}
+
+
+def save_tapped(key, lines):
+    """Stores taps from a phone and shows them at once. Empty taps go back to plain lyrics.
+    Returns False if the song's lyrics aren't plain or the taps don't fit them."""
+    entry = lyrics_store.get(key)
+    if not entry or not (entry.get("status") == "plain" or entry.get("tapped")):
+        return False
+    plain = {"status": "plain", "text": entry["text"], "lookup": entry.get("lookup")}
+    if lines:
+        timed = tapped_lines(entry["text"], lines)
+        if not timed:
+            return False
+        tapped.set(key, timed)
+        fresh = {"status": "synced", "lines": timed, "tapped": True, "text": entry["text"], "lookup": entry.get("lookup")}
+    else:
+        tapped.set(key, None)
+        fresh = plain
+    timing.forget(key)   # the taps already match the song as it plays
+    CACHE.mkdir(exist_ok=True)
+    (CACHE / f"{key}.json").write_text(json.dumps(fresh, ensure_ascii=False), "utf-8")
+    lyrics_store._set(key, fresh)
+    return True
 
 
 # --- Transliteration and translation ----------------------------------------
@@ -1806,6 +1907,7 @@ contexts = WrittenStore("context", context_notes)
 stories = StoryStore()
 tidbits = TidbitStore()
 timing = TimingStore(TIMING)
+tapped = TappedStore(TAPPED)
 
 
 def current_player():
@@ -1957,6 +2059,14 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 timing.set(key, value)
                 self.send_json({"ok": True, "offset": value})
+        elif url.path == "/api/tapped":
+            key = query.get("key", [""])[0]
+            body = self.read_json(limit=512 * 1024)
+            lines = body.get("lines") if isinstance(body, dict) else None
+            if not song_key(key) or not isinstance(lines, list) or not save_tapped(key, lines):
+                self.send_json({"ok": False}, 400)
+            else:
+                self.send_json({"ok": True})
         elif url.path == "/api/timing/import":
             # Phones from before nudges lived on the Mac hand over what they remembered, once.
             body = self.read_json()

@@ -301,3 +301,74 @@ class LookupOrder(unittest.TestCase):
              mock.patch.object(server, "lookup_netease", side_effect=OSError("offline")), \
              mock.patch("builtins.print"):
             self.assertIs(server.lookup_lyrics(track("O Kadhale", "A.R. Rahman", 350)), plain)
+
+
+PLAIN = "O kadhale\n\nEn uyire\nNee varuvaai\n"
+
+
+class TappedTiming(unittest.TestCase):
+    def taps(self, *times, texts=("O kadhale", "En uyire", "Nee varuvaai")):
+        return [{"t": t, "text": text} for t, text in zip(times, texts)]
+
+    def test_one_tap_per_line_in_order(self):
+        lines = server.tapped_lines(PLAIN, self.taps(12.345, 16, 21.5))
+        self.assertEqual(lines, [{"t": 12.35, "text": "O kadhale"}, {"t": 16.0, "text": "En uyire"}, {"t": 21.5, "text": "Nee varuvaai"}])
+
+    def test_taps_that_dont_fit_are_refused(self):
+        self.assertIsNone(server.tapped_lines(PLAIN, self.taps(12, 16)))                 # a line missing
+        self.assertIsNone(server.tapped_lines(PLAIN, self.taps(12, 10, 21)))             # going back
+        self.assertIsNone(server.tapped_lines(PLAIN, self.taps(12, "soon", 21)))         # not a time
+        self.assertIsNone(server.tapped_lines(PLAIN, self.taps(12, float("nan"), 21)))
+        self.assertIsNone(server.tapped_lines(PLAIN, self.taps(12, 16, 21, texts=("O kadhale", "Other", "Nee varuvaai"))))
+        self.assertIsNone(server.tapped_lines(PLAIN, "not a list"))
+        self.assertIsNone(server.tapped_lines("", []))
+
+    def test_saved_taps_turn_plain_lyrics_synced(self):
+        with mock.patch.object(server.tapped, "get", return_value=self.taps(1, 2, 3)):
+            entry = server.with_tapped_timing("k", {"status": "plain", "text": PLAIN})
+        self.assertEqual(entry["status"], "synced")
+        self.assertTrue(entry["tapped"])
+        self.assertEqual(server.lyric_texts(entry), ["O kadhale", "En uyire", "Nee varuvaai"])
+
+    def test_taps_for_other_words_are_ignored(self):
+        with mock.patch.object(server.tapped, "get", return_value=self.taps(1, 2, 3, texts=("a", "b", "c"))):
+            entry = server.with_tapped_timing("k", {"status": "plain", "text": PLAIN})
+        self.assertEqual(entry["status"], "plain")
+
+    def test_store_round_trip(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as folder:
+            store = server.TappedStore(Path(folder) / "tapped")
+            self.assertIsNone(store.get("abc"))
+            store.set("abc", self.taps(1, 2, 3))
+            self.assertEqual(store.get("abc")[0]["text"], "O kadhale")
+            store.set("abc", None)
+            self.assertIsNone(store.get("abc"))
+
+    def test_saving_taps_updates_the_song_and_clears_the_nudge(self):
+        import tempfile
+        from pathlib import Path
+        key = "0123456789abcdef"
+        with tempfile.TemporaryDirectory() as folder:
+            store = server.TappedStore(Path(folder) / "tapped")
+            with mock.patch.object(server, "CACHE", Path(folder) / "cache"), \
+                 mock.patch.object(server, "tapped", store), \
+                 mock.patch.object(server.timing, "forget") as forget:
+                server.lyrics_store._set(key, {"status": "plain", "text": PLAIN, "lookup": server.LOOKUP_VERSION})
+                self.assertFalse(server.save_tapped(key, self.taps(1, 2)))
+                self.assertTrue(server.save_tapped(key, self.taps(1, 2, 3)))
+                self.assertEqual(server.lyrics_store.get(key)["status"], "synced")
+                forget.assert_called_with(key)
+                self.assertTrue(server.save_tapped(key, []))   # undo goes back to plain
+                self.assertEqual(server.lyrics_store.get(key)["status"], "plain")
+                self.assertIsNone(store.get(key))
+            server.lyrics_store.entries.pop(key, None)
+
+    def test_synced_lyrics_cant_be_overwritten_by_taps(self):
+        key = "fedcba9876543210"
+        server.lyrics_store._set(key, {"status": "synced", "lines": [{"t": 1, "text": "x"}]})
+        try:
+            self.assertFalse(server.save_tapped(key, [{"t": 1, "text": "x"}]))
+        finally:
+            server.lyrics_store.entries.pop(key, None)
