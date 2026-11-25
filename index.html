@@ -2949,11 +2949,11 @@ function toggleControls() {
 }
 
 // Natural English is the setting most worth finding, so the first few times the controls open on a
-// translated song with Literal on, a hint points at it.
+// translated song with Literal on, a hint points at it. Only on Lyrics, the one tab that shows that setting.
 function offerNatural() {
-  if (!extras.english || extras.natural || !Object.keys(view.english).length) return;
+  if (activeTab !== 'lyrics' || !extras.english || extras.natural || !Object.keys(view.english).length) return;
   setTimeout(() => {
-    if (!$('timing').classList.contains('off') && !extras.natural) offerHint('natural', 'Try Natural for English that flows', $('timing'));
+    if (activeTab === 'lyrics' && !$('timing').classList.contains('off') && !extras.natural) offerHint('natural', 'Try Natural for English that flows', $('timing'));
   }, 700);
 }
 
