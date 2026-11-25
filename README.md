@@ -196,6 +196,20 @@ ollama pull qwen3.5:27b
 DESK_MUSIC_WRITER=qwen3.5:27b ./install.sh
 ```
 
+### 5. Optional: Claude for better translations
+
+Claude, Anthropic's model, writes the **Natural** translation, the notes on what lines mean and the Story far better than a small model on the Mac, especially for Tamil and Hindi. It needs an [Anthropic API key](https://platform.claude.com) and costs well under a cent per new song with the default model, Claude Haiku (each song is written once, then kept). Save the key in your Keychain:
+
+```bash
+tools/claude-key.sh
+```
+
+The server picks it up straight away. Songs written on the Mac before are written again by Claude the next time they play, and the Mac's version shows until Claude's is ready. If Claude can't be reached, or the key stops working, the local model from step 4 writes instead, so it's worth keeping. Tidbits and the stand-in word-for-word translation stay on the Mac either way.
+
+**The lyrics of each song you play are sent to Anthropic** while this is on (see [What leaves your Mac](#what-leaves-your-mac)). To stop, run `tools/claude-key.sh remove`.
+
+To use a different Claude model, run the installer with its name, for example `DESK_MUSIC_CLAUDE_MODEL=claude-sonnet-5-5 ./install.sh`. `DESK_MUSIC_CLAUDE=off ./install.sh` turns Claude off whatever the key. When you run `server.py` by hand, you can give the key in `DESK_MUSIC_CLAUDE_KEY` instead of the Keychain; the installer never copies it into the startup settings, where it would sit in plain text.
+
 ## Working on it
 
 | Where | What's in it |
@@ -250,5 +264,6 @@ Please work on a branch and open a pull request.
 | Google Translate and Input Tools (unofficial endpoints) | Lines of the lyrics | Translation, unless the on-Mac translators are installed and the song is in an Indian script |
 | Wikipedia | Song, album and artist names | Tidbits |
 | YouTube's image server | Video ID | Thumbnails |
+| [Anthropic](https://www.anthropic.com) (Claude API), only with a key from `tools/claude-key.sh` | The song's title, artist, lyrics and their translations | The Natural translation, the notes on what lines mean, and the Story |
 
-Audio never leaves the Mac and is never saved. Ollama runs locally. The server listens on your local network with no password, so only run it on a network you trust.
+Audio never leaves the Mac and is never saved. Ollama runs locally. What Claude receives is covered by Anthropic's API terms. The server listens on your local network with no password, so only run it on a network you trust.
