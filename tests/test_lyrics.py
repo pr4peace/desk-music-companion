@@ -59,6 +59,31 @@ class SearchTerms(unittest.TestCase):
         self.assertIn("Sony Music India", artists)
 
 
+class SoundtrackTitles(unittest.TestCase):
+    def test_singers_in_a_music_app_title_become_artists(self):
+        titles, artists = server.search_terms(track("Bombay Madras Delhi - Gopal, Kavita Paudwal", "A R Rahman", 300))
+        self.assertEqual(titles[0], "Bombay Madras Delhi")
+        self.assertIn("Bombay Madras Delhi - Gopal, Kavita Paudwal", titles)
+        self.assertEqual(artists, ["A R Rahman", "Gopal", "Kavita Paudwal"])
+
+    def test_record_listing_the_singers_matches(self):
+        playing = track("Bombay Madras Delhi - Gopal, Kavita Paudwal", "A R Rahman", 300)
+        titles, names = server.search_terms(playing)
+        self.assertTrue(server.matches(record("Bombay Madras Delhi", "Gopal, Kavita Paudwal", 301), playing, titles, names))
+        self.assertFalse(server.matches(record("Bombay Madras Delhi", "Someone Else", 301), playing, titles, names))
+
+    def test_singers_are_searched_within_the_first_searches(self):
+        playing = track("Bombay Madras Delhi - Gopal, Kavita Paudwal", "A R Rahman", 300)
+        calls = []
+        with mock.patch.object(server, "lrclib", side_effect=lambda path, params: calls.append(params) or None):
+            server.lookup_lrclib(playing)
+        self.assertIn({"track_name": "Bombay Madras Delhi", "artist_name": "Gopal"}, calls)
+
+    def test_remaster_suffix_is_not_taken_for_singers(self):
+        titles, artists = server.search_terms(track("Hey Jude - Remastered 2015", "The Beatles"))
+        self.assertEqual(artists, ["The Beatles"])
+
+
 class Matching(unittest.TestCase):
     def check(self, item, playing):
         titles, names = server.search_terms(playing)

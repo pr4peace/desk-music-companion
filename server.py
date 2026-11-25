@@ -395,7 +395,14 @@ def search_terms(track):
     """Returns (titles, artists) to try for this track."""
     name, artist = track["name"], track["artist"]
     if not track["loose"]:
-        return title_variants(name), unique([artist, *artist_names(artist)])
+        titles, singers = title_variants(name), []
+        # Soundtracks often name the singers in the title ('Song - Singer, Singer') and give
+        # the composer as the artist. Lyrics sites list the singers, so try those too.
+        pieces = re.split(r"\s+[-–—]\s+", titles[-1], maxsplit=1)
+        if len(pieces) == 2 and pieces[0].strip() and pieces[1].strip():
+            titles = [pieces[0].strip(), *titles]
+            singers = artist_names(pieces[1])
+        return unique(titles), unique([artist, *singers, *artist_names(artist)])
 
     cleaned = clean_video_title(name) or name
     titles, artists = [], []
