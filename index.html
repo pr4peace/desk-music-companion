@@ -2323,6 +2323,7 @@ function setContext(on) {
 
 async function fetchStory(key) {
   const data = await (await fetch('/api/story?key=' + key, { cache: 'no-store' })).json();
+  if (tidbit.key !== key) return;   // the song changed while this was on its way
   story.status = data.status;
   story.label = data.label || '';
   story.done = data.done || 0;
@@ -2342,6 +2343,7 @@ async function fetchStory(key) {
 
 async function fetchFacts(key) {
   const data = await (await fetch('/api/tidbits?key=' + key, { cache: 'no-store' })).json();
+  if (tidbit.key !== key) return;   // the song changed while this was on its way
   tidbit.factStatus = data.status;
   if (data.status === 'loading') {
     if (data.step !== tidbit.step) { tidbit.step = data.step; tidbit.stepAt = performance.now(); }
@@ -2366,8 +2368,8 @@ async function loadTidbits() {
     return;
   }
   const jobs = [];
-  if (!settled(story.status)) jobs.push(fetchStory(key).catch(() => { story.status = 'failed'; }));
-  if (!settled(tidbit.factStatus)) jobs.push(fetchFacts(key).catch(() => { tidbit.factStatus = 'failed'; }));
+  if (!settled(story.status)) jobs.push(fetchStory(key).catch(() => { if (tidbit.key === key) story.status = 'failed'; }));
+  if (!settled(tidbit.factStatus)) jobs.push(fetchFacts(key).catch(() => { if (tidbit.key === key) tidbit.factStatus = 'failed'; }));
   await Promise.all(jobs);
   if (tidbit.key !== key) return;
   tidbit.items = [...story.items, ...tidbit.facts];
