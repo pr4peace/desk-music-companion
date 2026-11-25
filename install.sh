@@ -42,7 +42,7 @@ cat > "$SERVER_PLIST" <<PLIST
 	<array><string>$PYTHON</string><string>server.py</string></array>
 	<key>WorkingDirectory</key><string>$FOLDER</string>
 	<key>EnvironmentVariables</key>
-	<dict><key>PATH</key><string>$BREW_BIN:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string><key>DESK_MUSIC_WRITER</key><string>${DESK_MUSIC_WRITER:-}</string><key>DESK_MUSIC_CLAUDE_MODEL</key><string>${DESK_MUSIC_CLAUDE_MODEL:-}</string></dict>
+	<dict><key>PATH</key><string>$BREW_BIN:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string><key>DESK_MUSIC_WRITER</key><string>${DESK_MUSIC_WRITER:-}</string><key>DESK_MUSIC_CLAUDE_MODEL</key><string>${DESK_MUSIC_CLAUDE_MODEL:-}</string><key>DESK_MUSIC_CLAUDE</key><string>${DESK_MUSIC_CLAUDE:-}</string></dict>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
 	<key>ThrottleInterval</key><integer>10</integer>

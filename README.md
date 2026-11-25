@@ -208,7 +208,7 @@ The server picks it up straight away. Songs written on the Mac before are writte
 
 **The lyrics of each song you play are sent to Anthropic** while this is on (see [What leaves your Mac](#what-leaves-your-mac)). To stop, run `tools/claude-key.sh remove`.
 
-To use a different Claude model, run the installer with its name, for example `DESK_MUSIC_CLAUDE_MODEL=claude-sonnet-5-5 ./install.sh`. You can also give the key in `DESK_MUSIC_CLAUDE_KEY` instead of the Keychain, and `DESK_MUSIC_CLAUDE=off` turns Claude off whatever the key.
+To use a different Claude model, run the installer with its name, for example `DESK_MUSIC_CLAUDE_MODEL=claude-sonnet-5-5 ./install.sh`. `DESK_MUSIC_CLAUDE=off ./install.sh` turns Claude off whatever the key. When you run `server.py` by hand, you can give the key in `DESK_MUSIC_CLAUDE_KEY` instead of the Keychain; the installer never copies it into the startup settings, where it would sit in plain text.
 
 ## Working on it
 
