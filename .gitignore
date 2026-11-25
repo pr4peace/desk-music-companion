@@ -27,3 +27,8 @@ timing.tmp
 
 # Lyric timing tapped along on a phone, one file per song
 tapped/
+
+# Self-update switch, and the commit install.sh last ran on
+updates.json
+updates.tmp
+installed-version
