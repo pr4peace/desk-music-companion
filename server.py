@@ -791,6 +791,7 @@ class GoogleGate:
 
     def __init__(self):
         self.lock = threading.Lock()
+        self.busy = threading.Lock()   # held for a whole request, so no two are ever in flight
         self.last = 0.0
         self.resting_until = 0.0
         self.strikes = 0
@@ -825,19 +826,20 @@ google_gate = GoogleGate()
 def ask_google(request, timeout):
     """Sends one request to Google through the gate. Server hiccups get one more try."""
     for attempt in range(2):
-        google_gate.wait_turn()
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                data = json.load(response)
-            google_gate.answered()
-            return data
-        except urllib.error.HTTPError as err:
-            if err.code == 429:
-                google_gate.refused(retry_after(err))
-                raise
-            if err.code not in (500, 502, 503, 504) or attempt == 1:
-                raise
-            time.sleep(3)
+        with google_gate.busy:
+            google_gate.wait_turn()
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    data = json.load(response)
+                google_gate.answered()
+                return data
+            except urllib.error.HTTPError as err:
+                if err.code == 429:
+                    google_gate.refused(retry_after(err))
+                    raise
+                if err.code not in (500, 502, 503, 504) or attempt == 1:
+                    raise
+        time.sleep(3)
 
 
 def google_translate(lines):
@@ -967,15 +969,17 @@ def translate_lines(lines):
     translated before come from the cache; only the rest are sent."""
     result = {}
     fresh = []
+    cached_english = 0
     for line in lines:
         hit = google_lines.get(line)
         if not hit:
             fresh.append(line)
-            continue
-        if hit[1] == "en":
-            return {}
-        if hit[0] and hit[0] != line:
+        elif hit[1] == "en":   # an English line, perhaps from another song: nothing to translate
+            cached_english += 1
+        elif hit[0] and hit[0] != line:
             result[line] = hit[0]
+    if lines and cached_english == len(lines):
+        return {}
 
     chunks, current, size = [], [], 0
     for line in fresh:

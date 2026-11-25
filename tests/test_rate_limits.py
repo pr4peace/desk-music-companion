@@ -93,6 +93,17 @@ class AskGoogle(Isolated):
         self.assertEqual(urlopen.call_count, 2)
         self.assertFalse(self.gate.resting())
 
+    def test_requests_never_overlap(self):
+        held = []
+
+        def urlopen(request, timeout):
+            held.append(self.gate.busy.locked())
+            return reply([1])
+        with mock.patch.object(server.urllib.request, "urlopen", side_effect=urlopen):
+            server.ask_google("request", 5)
+        self.assertEqual(held, [True])
+        self.assertFalse(self.gate.busy.locked())
+
     def test_spelling_goes_through_the_gate_too(self):
         self.gate.refused()
         with self.assertRaises(server.GoogleResting):
@@ -125,10 +136,16 @@ class FewerRequests(Isolated):
         google.assert_called_once_with(["rendu"])
 
     def test_a_cached_english_song_stays_untranslated(self):
-        server.google_lines.put({"hello": ["hello", "en"]})
+        server.google_lines.put({"hello": ["hello", "en"], "world": ["world", "en"]})
         with mock.patch.object(server, "translate_rows") as google:
             self.assertEqual(server.translate_lines(["hello", "world"]), {})
         google.assert_not_called()
+
+    def test_a_cached_english_line_does_not_stop_the_rest_of_a_song(self):
+        server.google_lines.put({"I love you": ["I love you", "en"], "onnu": ["One", "ta"]})
+        with mock.patch.object(server, "translate_rows", return_value=(["Two"], "ta")) as google:
+            self.assertEqual(server.translate_lines(["I love you", "onnu", "rendu"]), {"onnu": "One", "rendu": "Two"})
+        google.assert_called_once_with(["rendu"])
 
     def test_a_song_cut_off_by_a_refusal_resumes_where_it_stopped(self):
         lines = [f"{n:03d} " + "x" * 900 for n in range(3)]
