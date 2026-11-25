@@ -11,15 +11,14 @@ What's being worked on, what's next, and good things to pick up. If you take som
 1. **Story tab, with meaning.** Rename Tidbits to Story. Open it with what the song is about, in two or three sentences written from the Natural translation, then the key line and what it means, then the tidbits.
 2. **Show people what's possible.** One-time glass hints where they apply ("Double-tap for controls", "Swipe for more styles", "Try Natural"), plus a small "?" in the controls that opens a one-screen guide. Each hint goes away for good once the feature has been used.
 3. **The phone finds the Mac by itself.** No address to type: the server announces itself on the network and the page finds it.
-4. **Timing fixes saved on the Mac.** The − / + lyric nudge is remembered per phone today. Keep it on the Mac so every screen gets it and it survives reinstalls.
 
 ## Later
 
-5. **Exact word timing with Whisper.** Lyric sites only time whole lines, so the word highlight is an estimate. Listening to the song with Whisper (on the Mac, after separating the vocals) could time each word.
-6. **An idle screen worth looking at.** When nothing plays, a slow wall of recently played album art, or a clock in the last album's colours.
-7. **More visual styles.** See the ideas below.
-8. **More from the phone.** Volume, a look at what's up next, "play more like this".
-9. **Windows support.** See below.
+4. **Exact word timing with Whisper.** Lyric sites only time whole lines, so the word highlight is an estimate. Listening to the song with Whisper (on the Mac, after separating the vocals) could time each word.
+5. **An idle screen worth looking at.** When nothing plays, a slow wall of recently played album art, or a clock in the last album's colours.
+6. **More visual styles.** See the ideas below.
+7. **More from the phone.** Volume, a look at what's up next, "play more like this".
+8. **Windows support.** See below.
 
 ## Visualizer ideas
 

@@ -157,6 +157,9 @@ def levels_frame(position):
     return {"b": bands, "w": wave, "v": vocal}
 
 
+nudge = {"value": 0.0}   # the timing nudge, kept here as the real server keeps it, so every open page shares it
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -184,7 +187,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({
                 "state": "paused" if player.paused_at else "playing",
                 "position": player.position(), "age": 0, "lyrics": "synced", "art": "demo",
-                "track": {"key": KEY, "name": "Chai Ki Pyaali", "artist": "The Demo Band", "album": "Desk Songs", "duration": DURATION},
+                "track": {"key": KEY, "name": "Chai Ki Pyaali", "artist": "The Demo Band", "album": "Desk Songs", "duration": DURATION, "offset": nudge["value"]},
             })
         elif url.path == "/api/lyrics":
             self.send_json({
@@ -220,8 +223,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urllib.parse.urlparse(self.path)
-        action = urllib.parse.parse_qs(url.query).get("action", [""])[0]
-        if action == "toggle":
+        query = urllib.parse.parse_qs(url.query)
+        action = query.get("action", [""])[0]
+        if url.path == "/api/timing":
+            nudge["value"] = round(float(query.get("offset", ["0"])[0]), 2)
+        elif url.path == "/api/timing/import":
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))   # the demo song is never in a phone's old nudges
+        elif action == "toggle":
             player.toggle()
         elif action in ("next", "previous"):
             player.seek(0)
