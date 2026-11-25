@@ -16,6 +16,23 @@ private struct Status {
     var nowPlaying: String?
 }
 
+// What the server's self-updater reports from /api/updates.
+private struct Updates {
+    var known = false
+    var auto = true
+    var message = ""
+    var updated: Date?
+    var needsInstall = false
+}
+
+private func postToServer(_ path: String, then: @escaping () -> Void) {
+    var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 3
+    request.setValue("1", forHTTPHeaderField: "X-Desk-Lyrics")
+    URLSession.shared.dataTask(with: request) { _, _, _ in DispatchQueue.main.async(execute: then) }.resume()
+}
+
 @discardableResult
 private func launchctl(_ arguments: String...) -> Bool {
     let process = Process()
@@ -55,6 +72,7 @@ private func menuBarImage(dimmed: Bool) -> NSImage {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var item: NSStatusItem!
     private var status = Status()
+    private var updates = Updates()
     private var timer: Timer?
 
     static func main() {
@@ -96,6 +114,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.item.button?.image = menuBarImage(dimmed: !next.running)
             }
         }.resume()
+
+        var updateRequest = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/api/updates")!)
+        updateRequest.timeoutInterval = 2
+        URLSession.shared.dataTask(with: updateRequest) { data, _, error in
+            var next = Updates()
+            if error == nil, let data, let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                next.known = true
+                next.auto = state["auto"] as? Bool ?? true
+                next.message = state["message"] as? String ?? ""
+                if let at = state["updated"] as? Double { next.updated = Date(timeIntervalSince1970: at) }
+                next.needsInstall = state["needs_install"] as? Bool ?? false
+            }
+            DispatchQueue.main.async { self.updates = next }
+        }.resume()
     }
 
     private func info(_ title: String) -> NSMenuItem {
@@ -126,6 +158,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             menu.addItem(action("Start Server", #selector(startServer)))
         }
+        if updates.known {
+            menu.addItem(.separator())
+            menu.addItem(info(updates.message))
+            if let updated = updates.updated {
+                let when = DateFormatter.localizedString(from: updated, dateStyle: .medium, timeStyle: .short)
+                menu.addItem(info("Last updated \(when)"))
+            }
+            if updates.needsInstall {
+                menu.addItem(info("Run ./install.sh to finish the last update"))
+            }
+            let auto = action("Update Automatically", #selector(toggleUpdates))
+            auto.state = updates.auto ? .on : .off
+            menu.addItem(auto)
+            menu.addItem(action("Check for Updates Now", #selector(checkForUpdates)))
+        }
         menu.addItem(.separator())
         let login = action("Open Menu Helper at Login", #selector(toggleLogin))
         login.state = FileManager.default.fileExists(atPath: menuPlist.path) ? .on : .off
@@ -155,6 +202,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func stopServer() {
         launchctl("bootout", "\(session)/\(serverLabel)")
         refreshSoon()
+    }
+
+    @objc private func toggleUpdates() {
+        postToServer("/api/updates?auto=\(updates.auto ? 0 : 1)") { self.refresh() }
+    }
+
+    @objc private func checkForUpdates() {
+        postToServer("/api/updates?check=1") { self.refreshSoon() }
     }
 
     private func refreshSoon() {

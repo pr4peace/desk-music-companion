@@ -66,6 +66,9 @@ cat > "$AGENTS/com.desklyrics.menu.plist" <<PLIST
 </plist>
 PLIST
 
+# The server updates itself from GitHub; this tells it when a change needs this script again.
+git rev-parse HEAD > installed-version 2>/dev/null || true
+
 SESSION="gui/$(id -u)"
 launchctl bootout "$SESSION/com.desklyrics.server" 2>/dev/null || true
 sleep 1
