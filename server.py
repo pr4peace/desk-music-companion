@@ -689,7 +689,7 @@ class LyricsStore:
         if record and record.get("syncedLyrics"):
             entry = {"status": "synced", "lines": parse_lrc(record["syncedLyrics"])}
         elif record and record.get("plainLyrics"):
-            entry = with_tapped_timing(key, {"status": "plain", "text": record["plainLyrics"]})
+            entry = with_tapped_timing(key, {"status": "plain", "text": record["plainLyrics"], "source": lrclib_source(record)})
         elif record and record.get("instrumental"):
             entry = {"status": "instrumental"}
         else:
@@ -864,7 +864,7 @@ def with_tapped_timing(key, entry):
     lines = tapped_lines(entry.get("text"), tapped.get(key))
     if not lines:
         return entry
-    return {"status": "synced", "lines": lines, "tapped": True, "text": entry["text"]}
+    return {"status": "synced", "lines": lines, "tapped": True, "text": entry["text"], "source": entry.get("source")}
 
 
 def save_tapped(key, lines):
@@ -873,13 +873,13 @@ def save_tapped(key, lines):
     entry = lyrics_store.get(key)
     if not entry or not (entry.get("status") == "plain" or entry.get("tapped")):
         return False
-    plain = {"status": "plain", "text": entry["text"], "lookup": entry.get("lookup")}
+    plain = {"status": "plain", "text": entry["text"], "lookup": entry.get("lookup"), "source": entry.get("source")}
     if lines:
         timed = tapped_lines(entry["text"], lines)
         if not timed:
             return False
         tapped.set(key, timed)
-        fresh = {"status": "synced", "lines": timed, "tapped": True, "text": entry["text"], "lookup": entry.get("lookup")}
+        fresh = {**plain, "status": "synced", "lines": timed, "tapped": True}
     else:
         tapped.set(key, None)
         fresh = plain
@@ -888,6 +888,212 @@ def save_tapped(key, lines):
     (CACHE / f"{key}.json").write_text(json.dumps(fresh, ensure_ascii=False), "utf-8")
     lyrics_store._set(key, fresh)
     return True
+
+
+# --- Sharing tapped timing with LRCLIB ---------------------------------------
+
+# Timing someone tapped can go to LRCLIB, so everyone else gets these lyrics in time too. This
+# publishes publicly, so it only ever happens when someone presses Share on the phone. LRCLIB asks
+# for a small proof of work first: find a number whose SHA-256, after its prefix, is at most its target.
+SHARED = TAPPED / "shared.json"
+MOST_TRIES = 1 << 32   # far past any target LRCLIB sets; a guard against a broken challenge
+
+
+def lrclib_source(record):
+    """What LRCLIB calls a record, so a share lands on the same song."""
+    return {k: record.get(k) for k in ("trackName", "artistName", "albumName", "duration")}
+
+
+def lrc_stamp(seconds):
+    hundredths = round(max(0.0, seconds) * 100)
+    minutes, rest = divmod(hundredths, 6000)
+    return f"[{minutes:02d}:{rest // 100:02d}.{rest % 100:02d}]"
+
+
+def synced_lrc(lines, offset=0):
+    """Tapped lines as LRC. A − / + nudge moves every line, the way the phone shows them."""
+    return "\n".join(f"{lrc_stamp(line['t'] - offset)} {line['text']}" for line in lines)
+
+
+def solve_challenge(prefix, target):
+    goal = bytes.fromhex(target)
+    start = hashlib.sha256(prefix.encode("utf-8"))
+    for nonce in range(MOST_TRIES):
+        attempt = start.copy()
+        attempt.update(str(nonce).encode("ascii"))
+        if attempt.digest() <= goal:
+            return str(nonce)
+    raise ValueError("no answer to LRCLIB's challenge")
+
+
+def lrclib_post(path, body=None, headers=None):
+    """Returns LRCLIB's status code and JSON reply. Raises only if LRCLIB can't be reached."""
+    data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else b""
+    request = urllib.request.Request(
+        f"https://lrclib.net/api/{path}", data=data, method="POST",
+        headers={"User-Agent": USER_AGENT, "Content-Type": "application/json", **(headers or {})},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            status, raw = response.status, response.read()
+    except urllib.error.HTTPError as err:
+        status, raw = err.code, err.read()
+    try:
+        return status, json.loads(raw) if raw else None
+    except ValueError:
+        return status, None
+
+
+def publish_to_lrclib(payload):
+    """Asks for a challenge, answers it and publishes. Returns None, or what went wrong."""
+    status, challenge = lrclib_post("request-challenge")
+    if status != 200 or not isinstance(challenge, dict) or not challenge.get("prefix") or not challenge.get("target"):
+        return f"LRCLIB didn't give a challenge ({status})"
+    nonce = solve_challenge(challenge["prefix"], challenge["target"])
+    status, reply = lrclib_post("publish", payload, {"X-Publish-Token": f"{challenge['prefix']}:{nonce}"})
+    if status != 201:
+        message = reply.get("message") if isinstance(reply, dict) else None
+        return f"LRCLIB said no ({status}{': ' + message if message else ''})"
+    return None
+
+
+def share_fingerprint(payload):
+    return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+def share_payload(key, source):
+    """What would be published for this song, or None if there's no tapped timing to share."""
+    entry = lyrics_store.get(key)
+    if not entry or not entry.get("tapped") or not entry.get("lines"):
+        return None
+    if not source or not source.get("trackName") or not source.get("artistName") or not source.get("duration"):
+        return None
+    return {
+        "trackName": source["trackName"],
+        "artistName": source["artistName"],
+        "albumName": source.get("albumName") or "",
+        "duration": round(float(source["duration"])),
+        "plainLyrics": "\n".join(plain_rows(entry["text"])),
+        "syncedLyrics": synced_lrc(entry["lines"], timing.get(key)),
+    }
+
+
+def playing_now(key):
+    """The player, if it's playing this song."""
+    player = current_player()
+    if player["state"] in ("stopped", "unavailable"):
+        return None
+    if hashlib.sha1(f"{player['name']}\0{player['artist']}".encode("utf-8")).hexdigest()[:16] != key:
+        return None
+    return player
+
+
+def find_source(key, player):
+    """The LRCLIB record these plain lyrics came from, found again from what's playing, and kept
+    with the lyrics from then on. A song from a music app can fall back to its own details; a
+    video's title isn't a song title, so a video can't."""
+    record = lookup_lrclib({"name": player["name"], "artist": player["artist"], "album": player["album"],
+                            "duration": player["duration"], "loose": player["loose"]})
+    entry = lyrics_store.get(key)
+    if not entry:
+        return None
+    if record and plain_rows(record.get("plainLyrics")) == plain_rows(entry.get("text")):
+        source = lrclib_source(record)
+    elif not player["loose"] and player["duration"]:
+        source = {"trackName": player["name"], "artistName": player["artist"],
+                  "albumName": player["album"], "duration": player["duration"]}
+    else:
+        return None
+    kept = {**entry, "source": source}
+    try:
+        CACHE.mkdir(exist_ok=True)
+        (CACHE / f"{key}.json").write_text(json.dumps(kept, ensure_ascii=False), "utf-8")
+    except OSError as err:
+        print(f"couldn't save the lyrics record: {err}", flush=True)
+    lyrics_store._set(key, kept)
+    return source
+
+
+class ShareStore:
+    """Which songs' tapped timing has gone to LRCLIB, and what's happening with the rest."""
+
+    def __init__(self, path):
+        self.path = path
+        self.lock = threading.Lock()
+        self.jobs = {}   # key -> {"status": "working" | "failed", "error": ...}
+        try:
+            saved = json.loads(path.read_text("utf-8"))
+        except (OSError, ValueError):
+            saved = {}
+        self.shared = {k: v for k, v in saved.items() if song_key(k) and isinstance(v, str)} if isinstance(saved, dict) else {}
+
+    def source(self, key):
+        """(LRCLIB record, None), or for songs saved before lyrics kept their record, (None, the
+        player) when it's playing this song so the record can be found again."""
+        entry = lyrics_store.get(key) or {}
+        if entry.get("source"):
+            return entry["source"], None
+        return None, playing_now(key)
+
+    def status(self, key):
+        """ready, working, shared, failed, or unavailable when there's nothing this Mac can share."""
+        with self.lock:
+            job = self.jobs.get(key)
+            if job and job["status"] == "working":
+                return dict(job)
+        source, player = self.source(key)
+        entry = lyrics_store.get(key) or {}
+        if not entry.get("tapped") or not (source or player):
+            return {"status": "unavailable"}
+        payload = share_payload(key, source) if source else None
+        with self.lock:
+            if payload and self.shared.get(key) == share_fingerprint(payload):
+                return {"status": "shared"}
+            if job and job["status"] == "failed":
+                return dict(job)
+        return {"status": "ready"}
+
+    def start(self, key):
+        with self.lock:
+            if self.jobs.get(key, {}).get("status") == "working":
+                return True
+        source, player = self.source(key)
+        if not (source or player) or not (lyrics_store.get(key) or {}).get("tapped"):
+            return False
+        with self.lock:
+            self.jobs[key] = {"status": "working"}
+        threading.Thread(target=self._share, args=(key, source, player), daemon=True).start()
+        return True
+
+    def _share(self, key, source, player):
+        payload = None
+        try:
+            if not source:
+                source = find_source(key, player)
+            payload = share_payload(key, source)
+            if not payload:
+                error = "LRCLIB needs the song's title, artist and length"
+            else:
+                error = publish_to_lrclib(payload)
+        except Exception as err:   # network trouble; the phone offers to try again
+            error = f"couldn't reach LRCLIB: {err}"
+        with self.lock:
+            if error:
+                print(f"sharing timing for {key} failed: {error}", flush=True)
+                self.jobs[key] = {"status": "failed", "error": error}
+                return
+            self.jobs.pop(key, None)
+            self.shared[key] = share_fingerprint(payload)
+            self._save()
+
+    def _save(self):
+        temporary = self.path.with_suffix(".tmp")
+        try:
+            self.path.parent.mkdir(exist_ok=True)
+            temporary.write_text(json.dumps(self.shared, indent=1, sort_keys=True), "utf-8")
+            temporary.replace(self.path)
+        except OSError as err:
+            print(f"couldn't save shared timing: {err}", flush=True)
 
 
 # --- Transliteration and translation ----------------------------------------
@@ -2076,6 +2282,7 @@ stories = StoryStore()
 tidbits = TidbitStore()
 timing = TimingStore(TIMING)
 tapped = TappedStore(TAPPED)
+shares = ShareStore(SHARED)
 
 
 def current_player():
@@ -2235,6 +2442,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False}, 400)
             else:
                 self.send_json({"ok": True})
+        elif url.path == "/api/share":
+            # Publishes this song's tapped timing on LRCLIB. Only ever sent by someone pressing Share.
+            key = query.get("key", [""])[0]
+            if not song_key(key) or not shares.start(key):
+                self.send_json({"ok": False}, 400)
+            else:
+                self.send_json({"ok": True, **shares.status(key)})
         elif url.path == "/api/timing/import":
             # Phones from before nudges lived on the Mac hand over what they remembered, once.
             body = self.read_json()
@@ -2263,6 +2477,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(body)
             else:
                 self.send_json({"status": "missing"}, 404)
+        elif url.path == "/api/share":
+            key = query.get("key", [""])[0]
+            self.send_json(shares.status(key) if song_key(key) else {"status": "unavailable"})
         elif url.path == "/api/levels":
             self.stream_levels()
         elif url.path == "/api/translation":
