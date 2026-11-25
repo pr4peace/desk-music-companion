@@ -581,25 +581,31 @@ function retireHint(name) {
   store(s => s.setItem('hint:' + name, String(HINT_SHOWS)));
   if ($('hint').dataset.name === name) hideHint();
 }
-// The − / + nudge lives on the Mac, so every phone shares it. A change waits here until the Mac has it,
-// and until then the phone trusts its own value over what the Mac last reported.
-let offsetSave = null, offsetSavedAt = 0;
+// The − / + nudge lives on the Mac, so every phone shares it. Changes wait here, one per song, until the
+// Mac has them, and until then the phone trusts its own value over what the Mac last reported. They go
+// one at a time, so an older value can never land after a newer one.
+const offsetSaves = new Map();
+let offsetSending = false, offsetSavedAt = 0;
 async function saveOffset() {
-  const job = offsetSave;
-  if (!job || job.sending) return;
-  job.sending = true;
-  try {
-    const res = await fetch(`/api/timing?key=${encodeURIComponent(job.key)}&offset=${job.value}`, {
-      method: 'POST', headers: { 'X-Desk-Lyrics': '1' }, signal: AbortSignal.timeout(6000),
-    });
-    if (res.ok && offsetSave === job) { offsetSave = null; offsetSavedAt = performance.now(); }
-  } catch { /* the next poll tries again */ }
-  job.sending = false;
-  if (offsetSave && offsetSave !== job) saveOffset();   // a newer change came in while this one was on its way
+  if (offsetSending || !offsetSaves.size) return;
+  offsetSending = true;
+  let reached = true;
+  for (const [key, value] of [...offsetSaves]) {
+    try {
+      const res = await fetch(`/api/timing?key=${encodeURIComponent(key)}&offset=${value}`, {
+        method: 'POST', headers: { 'X-Desk-Lyrics': '1' }, signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok && res.status !== 400) { reached = false; break; }   // 400 means the Mac will never take it
+      if (offsetSaves.get(key) === value) offsetSaves.delete(key);
+      offsetSavedAt = performance.now();
+    } catch { reached = false; break; }   // the next poll tries again
+  }
+  offsetSending = false;
+  if (reached) saveOffset();   // sends anything changed while these were on their way
 }
 // The Mac's nudge for this song, unless a change made here hasn't reached it yet or the reading predates it.
 function offsetFromMac(track, sent) {
-  if (offsetSave?.key === track.key) return offsetSave.value;
+  if (offsetSaves.has(track.key)) return offsetSaves.get(track.key);
   if (sent < offsetSavedAt) return view.offset;
   return track.offset || 0;
 }
@@ -2670,7 +2676,7 @@ function showTrack(state, sent) {
   if (view.key !== track.key) {
     view.key = track.key;
     view.status = null;
-    view.offset = offsetSave?.key === track.key ? offsetSave.value : track.offset || 0;
+    view.offset = offsetSaves.has(track.key) ? offsetSaves.get(track.key) : track.offset || 0;
     $('title').textContent = track.name;
     $('artist').textContent = track.artist;
     clearLyrics();
@@ -2828,7 +2834,7 @@ function toggleControls() {
 
 function changeOffset(delta) {
   view.offset = Math.round((view.offset + delta) * 100) / 100;
-  offsetSave = { key: view.key, value: view.offset };
+  offsetSaves.set(view.key, view.offset);
   saveOffset();
   showOffset();
   revealTiming();
