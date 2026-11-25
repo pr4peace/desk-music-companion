@@ -13,13 +13,11 @@ Run:    python3 server.py        (PORT=9000 python3 server.py to change the port
 """
 import atexit
 import base64
-import ctypes
 import functools
 import hashlib
 import json
 import os
 import re
-import shutil
 import signal
 import socket
 import subprocess
@@ -37,7 +35,13 @@ ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / "cache"
 PORT = int(os.environ.get("PORT", "8787"))
 USER_AGENT = "DeskLyrics/1.0"
-MEDIA_CONTROL = shutil.which("media-control") or "/opt/homebrew/bin/media-control"
+
+# The parts that only work on a Mac live in macos.py. Elsewhere, stand-ins let the server
+# load and its tests run.
+if sys.platform == "darwin":
+    import macos as system
+else:
+    import other_systems as system
 
 # These apps report clean song metadata. Anything else (usually a browser playing
 # a video) gets its title untangled and looser matching.
@@ -74,13 +78,15 @@ class NowPlaying:
             self.process.terminate()
 
     def _run(self):
-        command = [MEDIA_CONTROL, "stream", "--micros"]
         while True:
+            command = system.now_playing_command()
             try:
+                if not command:
+                    raise OSError("no now-playing reader")
                 self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             except OSError:
                 with self.lock:
-                    self.error = "Install media-control on the Mac: brew install media-control"
+                    self.error = system.NOW_PLAYING_MISSING
                 time.sleep(30)
                 continue
             with self.lock:
@@ -175,93 +181,6 @@ class NowPlaying:
 
 # --- YouTube in Safari ------------------------------------------------------
 
-CORE_AUDIO = ctypes.CDLL("/System/Library/Frameworks/CoreAudio.framework/CoreAudio")
-CORE_FOUNDATION = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
-CORE_FOUNDATION.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
-CORE_FOUNDATION.CFStringGetCString.restype = ctypes.c_bool
-CORE_FOUNDATION.CFRelease.argtypes = [ctypes.c_void_p]
-UTF8 = 0x08000100
-AUDIO_SYSTEM_OBJECT = 1
-
-
-class PropertyAddress(ctypes.Structure):
-    _fields_ = [("selector", ctypes.c_uint32), ("scope", ctypes.c_uint32), ("element", ctypes.c_uint32)]
-
-
-def audio_property(audio_object, code, buffer):
-    """Reads a Core Audio property into buffer. Returns (ok, bytes written)."""
-    address = PropertyAddress(int.from_bytes(code.encode("ascii"), "big"), int.from_bytes(b"glob", "big"), 0)
-    size = ctypes.c_uint32(ctypes.sizeof(buffer))
-    status = CORE_AUDIO.AudioObjectGetPropertyData(
-        audio_object, ctypes.byref(address), 0, None, ctypes.byref(size), ctypes.byref(buffer),
-    )
-    return status == 0, size.value
-
-
-def safari_is_audible():
-    """True while Safari's media process is sending sound to an output."""
-    processes = (ctypes.c_uint32 * 512)()
-    ok, size = audio_property(AUDIO_SYSTEM_OBJECT, "prs#", processes)
-    if not ok:
-        return False
-    for process in processes[:size // ctypes.sizeof(ctypes.c_uint32)]:
-        running = ctypes.c_uint32()
-        if not audio_property(process, "piro", running)[0] or not running.value:
-            continue
-        bundle = ctypes.c_void_p()
-        if not audio_property(process, "pbid", bundle)[0] or not bundle.value:
-            continue
-        text = ctypes.create_string_buffer(256)
-        found = CORE_FOUNDATION.CFStringGetCString(bundle, text, 256, UTF8)
-        CORE_FOUNDATION.CFRelease(bundle)
-        if found and text.value.startswith((b"com.apple.WebKit.", b"com.apple.Safari")):
-            return True
-    return False
-
-
-SAFARI_PROBE = (
-    "(()=>{const v=document.querySelector('video');"
-    "const m=navigator.mediaSession&&navigator.mediaSession.metadata;"
-    "const p=document.querySelector('#movie_player');"
-    "return JSON.stringify({paused:v?v.paused:true,time:v?v.currentTime:0,duration:v?v.duration:0,"
-    "rate:v?v.playbackRate:1,ad:!!(p&&p.classList.contains('ad-showing')),"
-    "title:m?m.title:'',artist:m?m.artist:'',album:m?m.album:''})})()"
-)
-
-SAFARI_SCRIPT = r"""
-function run() {
-  const safari = Application('Safari');
-  if (!safari.running()) return '[]';
-  const probe = %s;
-  const rows = [];
-  for (const win of safari.windows()) {
-    let front = -1;
-    try { front = win.currentTab().index(); } catch (e) { continue; }
-    for (const tab of win.tabs()) {
-      const url = tab.url() || '';
-      if (!/^https:\/\/(www\.|m\.|music\.)?youtube\.com\/(watch\?|shorts\/)/.test(url)) continue;
-      const row = {url: url, name: tab.name(), front: tab.index() === front};
-      try { row.video = JSON.parse(safari.doJavaScript(probe, {in: tab})); } catch (e) {}
-      rows.push(row);
-    }
-  }
-  return JSON.stringify(rows);
-}
-""" % json.dumps(SAFARI_PROBE)
-
-
-def read_safari_tabs():
-    """Returns the open YouTube tabs, or None if Safari could not be asked."""
-    try:
-        done = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", SAFARI_SCRIPT],
-            capture_output=True, text=True, timeout=5,
-        )
-        return json.loads(done.stdout) if done.returncode == 0 else None
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return None
-
-
 def choose_tab(rows):
     def preference(row):
         video = row.get("video") or {}
@@ -311,13 +230,13 @@ class SafariYouTube:
         if now_playing.snapshot()["state"] == "playing":
             self._clear()
             return
-        audible = safari_is_audible()
+        audible = system.safari_is_audible()
         if audible:
             self.last_audible = time.monotonic()
         elif time.monotonic() - self.last_audible > self.KEEP_PAUSED:
             self._clear()
             return
-        rows = read_safari_tabs()
+        rows = system.read_safari_tabs()
         if rows is not None:
             self._update(choose_tab(rows), audible)
 
@@ -782,28 +701,6 @@ class TimingStore:
 
 # --- Transliteration and translation ----------------------------------------
 
-CORE_FOUNDATION.CFStringCreateWithCString.restype = ctypes.c_void_p
-CORE_FOUNDATION.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
-CORE_FOUNDATION.CFStringCreateMutableCopy.restype = ctypes.c_void_p
-CORE_FOUNDATION.CFStringCreateMutableCopy.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_void_p]
-CORE_FOUNDATION.CFStringTransform.restype = ctypes.c_bool
-CORE_FOUNDATION.CFStringTransform.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool]
-
-
-def to_latin(text):
-    """Converts any script to Latin letters with macOS's built-in ICU transform."""
-    cf = CORE_FOUNDATION
-    source = cf.CFStringCreateWithCString(None, text.encode("utf-8"), UTF8)
-    mutable = cf.CFStringCreateMutableCopy(None, 0, source)
-    transform = cf.CFStringCreateWithCString(None, b"Any-Latin", UTF8)
-    cf.CFStringTransform(mutable, None, transform, False)
-    output = ctypes.create_string_buffer(len(text.encode("utf-8")) * 6 + 64)
-    found = cf.CFStringGetCString(mutable, output, len(output), UTF8)
-    for handle in (source, mutable, transform):
-        cf.CFRelease(handle)
-    return output.value.decode("utf-8") if found else text
-
-
 VOWELS = "aāiīuūeēoō"
 TAMIL = re.compile(r"[஀-௿]")
 DEVANAGARI = re.compile(r"[ऀ-ॿ]")
@@ -841,7 +738,7 @@ def not_latin(text):
 def romanize_word(word):
     if not not_latin(word):
         return word   # an English word inside a Tamil line stays as it is
-    latin = unicodedata.normalize("NFC", to_latin(word))
+    latin = unicodedata.normalize("NFC", system.to_latin(word))
     if TAMIL.search(word):
         latin = TAMIL_SOUNDS.sub(tamil_sound, latin)
     elif DEVANAGARI.search(word):
@@ -1754,26 +1651,6 @@ class TidbitStore:
 
 # --- Visualizer --------------------------------------------------------------
 
-LEVELS_DIR = ROOT / "visualizer"
-LEVELS_SOURCE = LEVELS_DIR / "audio_levels.swift"
-LEVELS_HELPER = LEVELS_DIR / "audio_levels"
-
-
-def levels_helper_ready():
-    """Builds the helper if it is missing or out of date."""
-    if LEVELS_HELPER.exists() and LEVELS_HELPER.stat().st_mtime >= LEVELS_SOURCE.stat().st_mtime:
-        return True
-    command = [
-        "swiftc", "-O", "-o", str(LEVELS_HELPER), str(LEVELS_SOURCE),
-        "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
-        "-Xlinker", str(LEVELS_DIR / "Info.plist"),
-    ]
-    try:
-        return subprocess.run(command, capture_output=True, timeout=180).returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-
-
 class AudioLevels:
     """Runs the level helper only while a phone has the visualizer open."""
 
@@ -1818,12 +1695,13 @@ class AudioLevels:
                 if not self.clients:
                     self.thread = None
                     return
-            if not levels_helper_ready():
-                self._publish(b'{"error":"The visualizer helper could not be built on the Mac."}')
+            command = system.audio_levels_command()
+            if not command:
+                self._publish(json.dumps({"error": system.LEVELS_MISSING}).encode("utf-8"))
                 time.sleep(10)
                 continue
             self.process = subprocess.Popen(
-                [str(LEVELS_HELPER)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             )
             for line in self.process.stdout:
                 self._publish(line.strip())
@@ -1891,7 +1769,7 @@ def build_state():
     }
 
 
-MEDIA_COMMANDS = {"toggle": "toggle-play-pause", "next": "next-track", "previous": "previous-track"}
+CONTROL_ACTIONS = ("toggle", "next", "previous")
 SAFARI_ACTIONS = {
     "toggle": "(()=>{const v=document.querySelector('video');if(v)v.paused?v.play():v.pause()})()",
     "next": "document.querySelector('.ytp-next-button, .next-button')?.click()",
@@ -1901,17 +1779,6 @@ SAFARI_ACTIONS = {
         "if(v&&(v.currentTime>3||!b||!b.offsetParent))v.currentTime=0;else if(b)b.click()})()"
     ),
 }
-SAFARI_CONTROL = """
-function run(argv) {
-  const safari = Application('Safari');
-  for (const win of safari.windows()) {
-    for (const tab of win.tabs()) {
-      if (tab.url() === argv[0]) { safari.doJavaScript(argv[1], {in: tab}); return 'ok'; }
-    }
-  }
-  return 'missing';
-}
-"""
 
 
 def control(action):
@@ -1919,18 +1786,11 @@ def control(action):
     player = current_player()
     if player["state"] in ("stopped", "unavailable"):
         return False
-    try:
-        if player.get("source") != "safari":
-            return subprocess.run([MEDIA_CONTROL, MEDIA_COMMANDS[action]], capture_output=True, timeout=5).returncode == 0
-        if not player["timed"]:
-            return False   # Safari's Apple Events setting is off, so the tab can't be reached
-        done = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", SAFARI_CONTROL, player["url"], SAFARI_ACTIONS[action]],
-            capture_output=True, text=True, timeout=5,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    sent = done.returncode == 0 and done.stdout.strip() == "ok"
+    if player.get("source") != "safari":
+        return system.send_media_command(action)
+    if not player["timed"]:
+        return False   # Safari's Apple Events setting is off, so the tab can't be reached
+    sent = system.run_in_safari_tab(player["url"], SAFARI_ACTIONS[action])
     if sent and action == "toggle":
         safari_youtube.toggled()
     return sent
@@ -2004,7 +1864,7 @@ class Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(url.query)
         if self.headers.get("X-Desk-Lyrics") != "1":   # stops other websites from sending commands
             self.send(b"Forbidden", "text/plain", 403)
-        elif url.path == "/api/control" and query.get("action", [""])[0] in MEDIA_COMMANDS:
+        elif url.path == "/api/control" and query.get("action", [""])[0] in CONTROL_ACTIONS:
             self.send_json({"ok": control(query["action"][0])})
         elif url.path == "/api/timing":
             key = query.get("key", [""])[0]

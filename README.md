@@ -195,7 +195,9 @@ DESK_MUSIC_WRITER=qwen3.5:27b ./install.sh
 
 | Where | What's in it |
 |---|---|
-| `server.py` | Now-playing detection, lyrics, transliteration, translation, tidbits, and the web server. Python standard library only. |
+| `server.py` | Lyrics lookup, transliteration, translation, tidbits, and the web server. Python standard library only. |
+| `macos.py` | The Mac-only parts behind small functions: now playing, the controls, Safari's YouTube tabs, the audio level helper and the ICU transform. `other_systems.py` has stand-ins so the server loads elsewhere. |
+| `tests/` | Automated tests for lyric matching, transliteration, translation and the Mac functions. |
 | `index.html` | The whole phone interface, in one file: layout, tabs, lyric animation, and the WebGL visualizer. |
 | `visualizer/` | Swift helper that measures the Mac's audio output. |
 | `mac/` | The menu bar helper and its icon. |
@@ -205,6 +207,8 @@ DESK_MUSIC_WRITER=qwen3.5:27b ./install.sh
 | `tools/check_sync.py` | Compares the lyric timing with the voice the Mac hears right now. Prints no lyrics. |
 | `tools/demo_server.py` | Serves the page with a made-up song, for working on the interface or taking screenshots. |
 | `docs/screenshots/` | The README's screenshots, all of the demo song. |
+
+Run the tests with `python3 -m unittest` from the project folder. They need no Mac, network or models, and take about a second.
 
 After changing `index.html`, just reload the page. After changing `server.py`, choose **Restart Server** from the menu bar. Problems are logged to `~/Library/Logs/DeskLyrics.log`.
 

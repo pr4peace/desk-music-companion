@@ -4,7 +4,13 @@ What's being worked on, what's next, and good things to pick up. If you take som
 
 ## Now
 
-- **Clean up the app: a full UI and UX audit.** Go through every screen in portrait and landscape: the three tabs, the controls, the visual styles, Tidbits, the idle clock, the error and empty states, and the Mac menu bar. Check accessibility (contrast, text size, VoiceOver labels, reduced motion), consistency with the liquid glass style, what's hard to discover, and anything confusing or left over from earlier experiments. Then fix what it finds, worst first.
+Nothing is in progress. Pick something from Next.
+
+## Done
+
+- **A full UI and UX audit, and the fixes it found** (7ce20c2): readable lines from the desk, VoiceOver language tags and labels, 44 px targets, landscape controls beside the lyric, one-time gesture hints, plain-words timing, Tidbits paging, and lighter per-frame drawing.
+- **The Mac-only parts of the server behind small functions.** `macos.py` holds now playing, the controls, Safari's tabs, the audio level helper and transliteration; `server.py` only calls them. The first step toward Windows (see below).
+- **Automated tests** for lyric matching, transliteration, translation and the Mac functions, in `tests/`. Run `python3 -m unittest` from the project folder. They need no Mac, network or models.
 
 ## Next
 
@@ -46,11 +52,11 @@ The phone side already works anywhere: it's a web page that can be added to the 
 | What's playing, position, album art | `media-control` (Apple's MediaRemote) and Safari's tabs | System Media Transport Controls, which apps like Spotify, Chrome, Edge and Apple Music for Windows report to. The `winrt-Windows.Media.Control` Python packages read them, and this covers YouTube in the browser without any per-browser code. |
 | Play, pause, next, previous | `media-control` and Safari JavaScript | The same Transport Controls session. |
 | Hearing the audio for the visualizer | `visualizer/audio_levels.swift`, a Core Audio tap | WASAPI loopback capture, for example with the `soundcard` or `PyAudioWPatch` Python packages. It must print the same JSON lines (`b`, `w`, `v`) so the page doesn't change. |
-| Transliteration | macOS's ICU through CoreFoundation (`to_latin` in `server.py`) | ICU through PyICU, or Windows' own `icu.dll`. |
+| Transliteration | macOS's ICU through CoreFoundation (`to_latin` in `macos.py`) | ICU through PyICU, or Windows' own `icu.dll`. |
 | Starting at login | LaunchAgent in `install.sh` | Task Scheduler or the Startup folder, from an `install.ps1`. |
 | Menu bar helper | `mac/DeskLyricsMenu.swift` | A system tray icon, for example with `pystray`. |
 | Phone finding the computer | `Your-Mac.local` | The PC's IP address from `ipconfig`, and allowing Python through Windows Firewall on private networks. |
 
 Lyrics, translation, NLLB, the local model through Ollama, tidbits, and the whole phone interface carry over as they are.
 
-A sensible way in: put the Mac-only parts of `server.py` behind small functions (now playing, controls, audio levels, transliteration), then add Windows versions beside them, one row of the table at a time.
+The Mac-only parts of the server are now behind small functions in `macos.py`: `now_playing_command`, `send_media_command`, `safari_is_audible`, `read_safari_tabs`, `run_in_safari_tab`, `audio_levels_command` and `to_latin`. `server.py` picks that module on a Mac and `other_systems.py` elsewhere, which has stand-ins so the server loads and its tests run. The way in is a `windows.py` with the same functions, filled in one row of the table at a time, with `server.py` choosing it on Windows. `tests/test_system.py` checks that every system module offers the same functions.
