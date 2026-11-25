@@ -5,7 +5,7 @@ Follows whatever macOS reports as Now Playing (Apple Music, Spotify, and so on)
 through the `media-control` tool. Safari does not always report to Now Playing,
 so while Safari is making sound the server also reads any open YouTube tab,
 which needs Safari > Settings > Developer > Allow JavaScript from Apple Events
-for lyrics timing. Finds lyrics on LRCLIB and serves a full-screen page over the
+for lyrics timing. Finds lyrics on LRCLIB (or NetEase, for timing LRCLIB lacks) and serves a full-screen page over the
 local network. It only touches playback when a control on the phone is pressed.
 
 Needs:  brew install media-control
@@ -395,7 +395,14 @@ def search_terms(track):
     """Returns (titles, artists) to try for this track."""
     name, artist = track["name"], track["artist"]
     if not track["loose"]:
-        return title_variants(name), unique([artist, *artist_names(artist)])
+        titles, singers = title_variants(name), []
+        # Soundtracks often name the singers in the title ('Song - Singer, Singer') and give
+        # the composer as the artist. Lyrics sites list the singers, so try those too.
+        pieces = re.split(r"\s+[-–—]\s+", titles[-1], maxsplit=1)
+        if len(pieces) == 2 and pieces[0].strip() and pieces[1].strip():
+            titles = [pieces[0].strip(), *titles]
+            singers = artist_names(pieces[1])
+        return unique(titles), unique([artist, *singers, *artist_names(artist)])
 
     cleaned = clean_video_title(name) or name
     titles, artists = [], []
@@ -556,7 +563,90 @@ def lookup_lrclib(track):
     return min(usable, key=lambda i: rank(i, track)) if usable else None
 
 
-LOOKUP_VERSION = 2   # songs saved by an earlier version of the matching rules are looked up again
+NETEASE = "https://music.163.com/api"
+# NetEase puts the credits (lyricist, composer...) at the top as timed lines. They are not sung.
+CREDIT_LINE = re.compile(r"^[^:：]{1,24}[:：]")
+CREDIT_WORDS = re.compile(r"[\u4e00-\u9fff]|lyric|compos|produc|arrang|written|music|vocal|singer|mix|master|record", re.I)
+
+
+def netease(path, params):
+    url = f"{NETEASE}/{path}?{urllib.parse.urlencode(params)}"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Referer": "https://music.163.com/"})
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as err:
+        if err.code in (400, 404):
+            return None
+        raise
+
+
+def clean_netease_lrc(text):
+    """Drops the credit lines NetEase adds, and the placeholder for songs nobody has timed."""
+    kept = []
+    for raw in (text or "").splitlines():
+        words = re.sub(r"\[[^\]]*\]", "", raw).strip()
+        match = CREDIT_LINE.match(words)
+        if match and CREDIT_WORDS.search(match[0]):
+            continue
+        kept.append(raw)
+    synced = "\n".join(kept)
+    lines = [line for line in parse_lrc(synced) if line["text"]]
+    if len(lines) < 4 or all(line["t"] == lines[0]["t"] for line in lines):
+        return None   # untimed or nearly empty: no better than plain lyrics
+    return synced
+
+
+def netease_record(song):
+    """A NetEase search result in the shape of an LRCLIB record, so the same checks apply."""
+    return {
+        "id": song.get("id"),
+        "trackName": song.get("name"),
+        "artistName": ", ".join(a.get("name") or "" for a in song.get("artists") or []),
+        "albumName": (song.get("album") or {}).get("name"),
+        "duration": (song.get("duration") or 0) / 1000,
+        "syncedLyrics": None,
+        "plainLyrics": None,
+    }
+
+
+def lookup_netease(track, reference=None):
+    """Returns a NetEase record with synced lyrics, or None. Raises on network failure."""
+    titles, names = search_terms(track)
+    tried = set()
+    for title in titles[:2]:
+        for query in ([f"{title} {names[0]}"] if names else []) + [title]:
+            found = netease("search/get", {"s": query, "type": 1, "limit": 10}) or {}
+            songs = (found.get("result") or {}).get("songs") or []
+            candidates = [netease_record(s) for s in songs]
+            candidates = [c for c in candidates if c["id"] not in tried and matches(c, track, titles, names)]
+            candidates.sort(key=lambda c: abs(c["duration"] - track["duration"]))
+            for candidate in candidates[:3]:
+                tried.add(candidate["id"])
+                lyric = netease("song/lyric", {"id": candidate["id"], "lv": 1}) or {}
+                candidate["syncedLyrics"] = clean_netease_lrc((lyric.get("lrc") or {}).get("lyric"))
+                if not candidate["syncedLyrics"] or not timing_fits(candidate, track):
+                    continue
+                if reference and not same_lyrics(candidate, reference):
+                    continue   # same title, other language
+                return candidate
+    return None
+
+
+def lookup_lyrics(track):
+    """LRCLIB first. When it has no timing, NetEase may. Raises only if LRCLIB can't be reached."""
+    record = lookup_lrclib(track)
+    if record and (record.get("syncedLyrics") or record.get("instrumental")):
+        return record
+    try:
+        timed = lookup_netease(track, reference=record)
+    except Exception as err:  # the second source is a bonus; plain lyrics still show
+        print(f"NetEase lookup failed for {track['name']}: {err}", flush=True)
+        timed = None
+    return timed or record
+
+
+LOOKUP_VERSION = 3   # songs saved by an earlier version of the matching rules are looked up again
 
 
 class LyricsStore:
@@ -590,7 +680,7 @@ class LyricsStore:
 
     def _fetch(self, key, track):
         try:
-            record = lookup_lrclib(track)
+            record = lookup_lyrics(track)
         except Exception as err:  # network trouble: keep the screen alive, try again soon
             print(f"lyrics lookup failed for {track['name']}: {err}", flush=True)
             self._set(key, {"status": "error", "retry_at": time.time() + self.ERROR_RETRY})
@@ -599,7 +689,7 @@ class LyricsStore:
         if record and record.get("syncedLyrics"):
             entry = {"status": "synced", "lines": parse_lrc(record["syncedLyrics"])}
         elif record and record.get("plainLyrics"):
-            entry = {"status": "plain", "text": record["plainLyrics"]}
+            entry = with_tapped_timing(key, {"status": "plain", "text": record["plainLyrics"]})
         elif record and record.get("instrumental"):
             entry = {"status": "instrumental"}
         else:
@@ -697,6 +787,107 @@ class TimingStore:
             temporary.replace(self.path)   # a crash mid-write never leaves half a file
         except OSError as err:   # still right for this run; it just won't outlast a restart
             print(f"couldn't save lyric timing: {err}", flush=True)
+
+
+# --- Timing tapped on a phone -------------------------------------------------
+
+# When no lyrics site has timing for a song, someone can tap along on the phone once, line by
+# line. Kept beside server.py like the nudges, since they are someone's work, not a download.
+TAPPED = ROOT / "tapped"
+LONGEST_SONG = 4 * 3600
+
+
+def plain_rows(text):
+    return [row.strip() for row in (text or "").split("\n") if row.strip()]
+
+
+def tapped_lines(text, lines):
+    """Checks a phone's taps against the plain lyrics: one time per line, in order, never going
+    back. Returns the timed lines, or None if they don't fit these lyrics."""
+    rows = plain_rows(text)
+    if not rows or not isinstance(lines, list) or len(lines) != len(rows):
+        return None
+    timed, last = [], 0.0
+    for row, line in zip(rows, lines):
+        if not isinstance(line, dict) or line.get("text") != row:
+            return None
+        t = seconds_value(line.get("t"))
+        if t is None or t < last or t > LONGEST_SONG:
+            return None
+        timed.append({"t": t, "text": row})
+        last = t
+    return timed
+
+
+def seconds_value(value):
+    """A time in seconds, rounded to hundredths, or None if it isn't a finite number."""
+    if isinstance(value, bool):
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):
+        return None
+    return round(max(0.0, value), 2)
+
+
+class TappedStore:
+    def __init__(self, folder):
+        self.folder = folder
+        self.lock = threading.Lock()
+
+    def get(self, key):
+        try:
+            lines = json.loads((self.folder / f"{key}.json").read_text("utf-8"))
+        except (OSError, ValueError):
+            return None
+        return lines if isinstance(lines, list) else None
+
+    def set(self, key, lines):
+        with self.lock:
+            path = self.folder / f"{key}.json"
+            try:
+                if lines:
+                    self.folder.mkdir(exist_ok=True)
+                    temporary = path.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(lines, ensure_ascii=False), "utf-8")
+                    temporary.replace(path)
+                else:
+                    path.unlink(missing_ok=True)
+            except OSError as err:
+                print(f"couldn't save tapped timing: {err}", flush=True)
+
+
+def with_tapped_timing(key, entry):
+    """Plain lyrics become synced when someone has tapped along to them before."""
+    lines = tapped_lines(entry.get("text"), tapped.get(key))
+    if not lines:
+        return entry
+    return {"status": "synced", "lines": lines, "tapped": True, "text": entry["text"]}
+
+
+def save_tapped(key, lines):
+    """Stores taps from a phone and shows them at once. Empty taps go back to plain lyrics.
+    Returns False if the song's lyrics aren't plain or the taps don't fit them."""
+    entry = lyrics_store.get(key)
+    if not entry or not (entry.get("status") == "plain" or entry.get("tapped")):
+        return False
+    plain = {"status": "plain", "text": entry["text"], "lookup": entry.get("lookup")}
+    if lines:
+        timed = tapped_lines(entry["text"], lines)
+        if not timed:
+            return False
+        tapped.set(key, timed)
+        fresh = {"status": "synced", "lines": timed, "tapped": True, "text": entry["text"], "lookup": entry.get("lookup")}
+    else:
+        tapped.set(key, None)
+        fresh = plain
+    timing.forget(key)   # the taps already match the song as it plays
+    CACHE.mkdir(exist_ok=True)
+    (CACHE / f"{key}.json").write_text(json.dumps(fresh, ensure_ascii=False), "utf-8")
+    lyrics_store._set(key, fresh)
+    return True
 
 
 # --- Transliteration and translation ----------------------------------------
@@ -1884,6 +2075,7 @@ contexts = WrittenStore("context", context_notes)
 stories = StoryStore()
 tidbits = TidbitStore()
 timing = TimingStore(TIMING)
+tapped = TappedStore(TAPPED)
 
 
 def current_player():
@@ -2035,6 +2227,14 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 timing.set(key, value)
                 self.send_json({"ok": True, "offset": value})
+        elif url.path == "/api/tapped":
+            key = query.get("key", [""])[0]
+            body = self.read_json(limit=512 * 1024)
+            lines = body.get("lines") if isinstance(body, dict) else None
+            if not song_key(key) or not isinstance(lines, list) or not save_tapped(key, lines):
+                self.send_json({"ok": False}, 400)
+            else:
+                self.send_json({"ok": True})
         elif url.path == "/api/timing/import":
             # Phones from before nudges lived on the Mac hand over what they remembered, once.
             body = self.read_json()

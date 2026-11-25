@@ -65,6 +65,8 @@ Play a song in Apple Music, Spotify, or a YouTube tab in Safari, and the phone s
 
 **Fix lyrics that run early or late.** In the controls, **−** and **+** move the lyrics a quarter second at a time, and the label tells you where they are: "Lyrics 0.5 s earlier". Tap the label to put them back on time.
 
+**Time a song no lyrics site has timed.** Lyrics come from LRCLIB, and from NetEase when LRCLIB only has plain text. When neither has timing, the lyrics just scroll. In the controls, **Time these lyrics by tapping along**, play the song from the start, and tap once as each line begins (**Undo** takes back a tap). After the last line the Mac keeps the timing, so from then on every phone highlights the lines as they're sung. **Retime** is there if a tap landed badly.
+
 <table>
   <tr>
     <td width="33%"><img src="docs/screenshots/controls.jpg" alt="The controls: play and skip buttons, In English letters On and Off, English Off, Literal and Natural, What it means On and Off, and the timing nudge"></td>
@@ -97,7 +99,7 @@ Leave the phone on the desk with the app open and play music on the Mac. Everyth
 - **Switch views** with the tabs at the bottom: Lyrics, Visualizer and Story.
 - **Double-tap anywhere for controls.** Tap anywhere outside them, or double-tap again, to put them away; they also go on their own after a few seconds. They only show what applies to the tab you're on:
   - **Every tab:** previous, play/pause, next.
-  - **Lyrics:** **In English letters** turns the transliteration on or off. **English** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). **What it means** adds a short note under lines whose meaning needs more than a translation. The first time Natural and the notes run on a song they take 20 to 50 seconds each, with a filling ring under the lyric to show how far along they are; the literal English shows meanwhile. **− / +** moves the lyrics a quarter second earlier or later if they drift, and the label says where they are; tap it to put them back on time. It's saved on the Mac for that song, so every phone shows the same fix and it survives reinstalling the page.
+  - **Lyrics:** **In English letters** turns the transliteration on or off. **English** picks **Off**, **Literal** (word for word) or **Natural** (written for meaning). **What it means** adds a short note under lines whose meaning needs more than a translation. The first time Natural and the notes run on a song they take 20 to 50 seconds each, with a filling ring under the lyric to show how far along they are; the literal English shows meanwhile. **− / +** moves the lyrics a quarter second earlier or later if they drift, and the label says where they are; tap it to put them back on time. It's saved on the Mac for that song, so every phone shows the same fix and it survives reinstalling the page. When a song has only plain lyrics, **Time these lyrics by tapping along** sits below it.
   - **Visualizer:** playback, and the timing nudge for the sung line.
   - **?** at the right of the playback buttons opens a one-screen guide to all of this. The first few times the controls open on a translated song, a hint points at **Natural**, until you've tried it.
 - **With VoiceOver,** double-tap belongs to VoiceOver, so swipe to the **Show controls** button just after the song title instead. With a keyboard, Tab gets you there and Escape closes the controls.
@@ -116,7 +118,7 @@ You need both devices, and they do different jobs.
 Mac                                                        iPhone on the desk
 ├─ knows what's playing   (media-control, Safari tabs)     └─ full-screen app that
 ├─ hears the sound        (visualizer/audio_levels)           shows the page and
-├─ finds the lyrics       (LRCLIB)                            keeps the screen on
+├─ finds the lyrics       (LRCLIB, NetEase)                   keeps the screen on
 ├─ translates, researches (Google, Wikipedia, Ollama)
 └─ serves it all on port 8787  ───── your Wi-Fi ─────►
 ```
@@ -242,6 +244,7 @@ Please work on a branch and open a pull request.
 | Service | What it receives | Why |
 |---|---|---|
 | [LRCLIB](https://lrclib.net) | Song title, artist, album, length | Lyrics |
+| [NetEase Cloud Music](https://music.163.com) (unofficial endpoints) | Song title and artist | Timed lyrics, only when LRCLIB has just plain text or nothing |
 | Google Translate and Input Tools (unofficial endpoints) | Lines of the lyrics | Translation, unless the on-Mac translators are installed and the song is in an Indian script |
 | Wikipedia | Song, album and artist names | Tidbits |
 | YouTube's image server | Video ID | Thumbnails |

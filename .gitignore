@@ -24,3 +24,6 @@ translate/.venv/
 # Lyric timing nudges, one per song, made on the phones
 timing.json
 timing.tmp
+
+# Lyric timing tapped along on a phone, one file per song
+tapped/
