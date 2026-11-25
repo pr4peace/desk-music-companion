@@ -34,6 +34,9 @@
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
   html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  /* A double-tap is ours (it opens the controls), so Safari must never take it as zoom: anywhere on the
+     page, the clock screen and the guide included. Pinch still zooms. */
+  html { touch-action: manipulation; }
   body {
     font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, Roboto, "Noto Sans", "Noto Sans Devanagari", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -3200,6 +3203,18 @@ document.addEventListener('focusin', wake);
 wake();
 $('now').addEventListener('pointermove', pointerMove);
 $('now').addEventListener('pointerup', pointerEnd);
+// Backstop for Safari on iPhone, which can still zoom on a quick second tap where a touch-action
+// rule doesn't reach: cancelling the second touchend of a double-tap stops the zoom. Buttons and
+// the guide keep their own taps, and the controls open from pointerup above, which has already run.
+let lastTouchEnd = { at: -1e9, x: 0, y: 0 };
+document.addEventListener('touchend', event => {
+  const touch = event.changedTouches[0];
+  if (!touch || event.touches.length) return;
+  const near = Math.hypot(touch.clientX - lastTouchEnd.x, touch.clientY - lastTouchEnd.y) < 48;
+  const second = event.timeStamp - lastTouchEnd.at < 340 && near;
+  lastTouchEnd = second ? { at: -1e9, x: 0, y: 0 } : { at: event.timeStamp, x: touch.clientX, y: touch.clientY };
+  if (second && !event.target.closest('button, a, input, select, textarea, dialog')) event.preventDefault();
+}, { passive: false });
 $('now').addEventListener('pointercancel', pointerEnd);
 addEventListener('resize', () => { stageRect = null; placeActive(true); });
 
