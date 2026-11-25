@@ -3,7 +3,20 @@ import unittest
 import urllib.error
 from unittest import mock
 
+import tempfile
+from pathlib import Path
+
 import server
+
+
+def setUpModule():
+    # Keep the tests' translations out of the real cache on disk, and the tests off the network.
+    folder = tempfile.TemporaryDirectory()
+    for patcher in (mock.patch.object(server, "google_lines", server.LineCache(Path(folder.name) / "lines.json")),
+                    mock.patch.object(server, "ask_google", side_effect=OSError("no network in tests"))):
+        patcher.start()
+        unittest.addModuleCleanup(patcher.stop)
+    unittest.addModuleCleanup(folder.cleanup)
 
 
 class LyricTexts(unittest.TestCase):
@@ -153,45 +166,44 @@ class EnglishFor(unittest.TestCase):
     """The order translators are tried in: on the Mac, then Google, then the local model."""
 
     def setUp(self):
-        for patcher in (mock.patch.object(server, "google_resting_until", 0.0), mock.patch("builtins.print")):
+        for patcher in (mock.patch.object(server, "google_gate", server.GoogleGate()), mock.patch("builtins.print")):
             patcher.start()
             self.addCleanup(patcher.stop)
 
     def test_on_mac_model_answers_first(self):
         with mock.patch.object(server, "translate_with_nllb", return_value={"a": "A"}), \
              mock.patch.object(server, "translate_lines") as google:
-            self.assertEqual(server.english_for(["a"]), {"a": "A"})
+            self.assertEqual(server.english_for(["a"]), ({"a": "A"}, "mac"))
         google.assert_not_called()
 
     def test_google_when_no_model_fits(self):
         with mock.patch.object(server, "translate_with_nllb", return_value=None), \
              mock.patch.object(server, "translate_lines", return_value={"a": "B"}):
-            self.assertEqual(server.english_for(["a"]), {"a": "B"})
+            self.assertEqual(server.english_for(["a"]), ({"a": "B"}, "google"))
 
     def test_model_crash_falls_through_to_google(self):
         with mock.patch.object(server, "translate_with_nllb", side_effect=RuntimeError("boom")), \
              mock.patch.object(server, "translate_lines", return_value={"a": "B"}):
-            self.assertEqual(server.english_for(["a"]), {"a": "B"})
+            self.assertEqual(server.english_for(["a"]), ({"a": "B"}, "google"))
 
-    def test_google_rate_limit_rests_google_and_uses_local_model(self):
-        refused = urllib.error.HTTPError("url", 429, "Too Many Requests", {}, None)
+    def test_google_refusal_uses_local_model(self):
         with mock.patch.object(server, "translate_with_nllb", return_value=None), \
-             mock.patch.object(server, "translate_lines", side_effect=refused), \
+             mock.patch.object(server, "translate_lines", side_effect=server.GoogleResting("resting")), \
              mock.patch.object(server, "translate_locally", return_value={"a": "C"}):
-            self.assertEqual(server.english_for(["a"]), {"a": "C"})
-        self.assertGreater(server.google_resting_until, server.time.time())
+            self.assertEqual(server.english_for(["a"]), ({"a": "C"}, "local"))
 
+    def test_lines_google_already_gave_beat_the_local_model(self):
+        server.google_lines.put({"a": ["Google A", "ta"]})
         with mock.patch.object(server, "translate_with_nllb", return_value=None), \
-             mock.patch.object(server, "translate_lines") as google, \
-             mock.patch.object(server, "translate_locally", return_value={"a": "C"}):
-            server.english_for(["a"])
-        google.assert_not_called()   # still resting
+             mock.patch.object(server, "translate_lines", side_effect=server.GoogleResting("resting")), \
+             mock.patch.object(server, "translate_locally", return_value={"a": "local A", "b": "local B"}):
+            self.assertEqual(server.english_for(["a", "b"]), ({"a": "Google A", "b": "local B"}, "local"))
 
     def test_none_when_everything_fails(self):
         with mock.patch.object(server, "translate_with_nllb", return_value=None), \
              mock.patch.object(server, "translate_lines", side_effect=OSError("offline")), \
              mock.patch.object(server, "translate_locally", side_effect=RuntimeError("no local model installed")):
-            self.assertIsNone(server.english_for(["a"]))
+            self.assertEqual(server.english_for(["zzz"]), (None, None))
 
 
 if __name__ == "__main__":

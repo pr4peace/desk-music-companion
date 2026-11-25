@@ -2250,7 +2250,7 @@ function setTranslating(on) {
   syncSplit();
 }
 
-async function loadTranslation(key) {
+async function loadTranslation(key, again = false) {
   let wait = 60000;
   try {
     const res = await fetch('/api/translation?key=' + key, { cache: 'no-store' });
@@ -2262,8 +2262,10 @@ async function loadTranslation(key) {
     if (data.status === 'ready') {
       view.english = data.lines;
       applyExtras();
-      if (extras.natural) loadNatural(key);
-      if (extras.context) loadContext(key);
+      if (!again && extras.natural) loadNatural(key);
+      if (!again && extras.context) loadContext(key);
+      // A stand-in from the Mac's own model while Google rests: look again for Google's version.
+      if (data.source === 'local') setTimeout(() => { if (view.key === key) loadTranslation(key, true); }, 60000);
       return;
     }
     if (data.status === 'none') return;
