@@ -207,6 +207,19 @@ class Sharing(NoNetwork):
         saved = json.loads((self.folder / "cache" / f"{key}.json").read_text("utf-8"))
         self.assertEqual(saved["source"]["albumName"], "Film OST")
 
+    def test_another_cut_playing_now_isnt_shared_as_the_record(self):
+        player = {**self.player(), "duration": 300}
+        key = self.key_for(player)
+        self.addCleanup(server.lyrics_store.entries.pop, key, None)
+        server.lyrics_store._set(key, {"status": "synced", "lines": LINES, "tapped": True, "text": PLAIN, "source": SOURCE})
+        with mock.patch.object(server, "current_player", return_value=player):
+            self.assertTrue(self.store.start(key))
+            self.assertEqual(self.store.status(key)["status"], "failed")
+        self.assertEqual(self.fake.calls, [])
+        with mock.patch.object(server, "current_player", return_value=self.player()):   # the record's own cut
+            self.store.start(key)
+            self.assertEqual(self.store.status(key), {"status": "shared"})
+
     def test_older_video_with_no_record_isnt_shared_under_its_video_title(self):
         player = self.player(name="O Kadhale | Official Video 4K", artist="Label", loose=True)
         key = self.key_for(player)

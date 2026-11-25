@@ -990,6 +990,15 @@ def playing_now(key):
     return player
 
 
+def other_recording(key, source):
+    """Songs are kept by title and artist, so another cut of the same song shares their lyrics. When
+    the one playing now is a different length from the LRCLIB record, the taps may be for that cut."""
+    player = playing_now(key)
+    if not player or player["loose"] or not player["duration"] or not source.get("duration"):
+        return False
+    return abs(player["duration"] - float(source["duration"])) > 5
+
+
 def find_source(key, player):
     """The LRCLIB record these plain lyrics came from, found again from what's playing, and kept
     with the lyrics from then on. A song from a music app can fall back to its own details; a
@@ -1062,6 +1071,10 @@ class ShareStore:
         source, player = self.source(key)
         if not (source or player) or not (lyrics_store.get(key) or {}).get("tapped"):
             return False
+        if source and other_recording(key, source):
+            with self.lock:
+                self.jobs[key] = {"status": "failed", "error": "this recording is a different length from LRCLIB's"}
+            return True
         with self.lock:
             self.jobs[key] = {"status": "working"}
         threading.Thread(target=self._share, args=(key, source, player), daemon=True).start()
